@@ -329,6 +329,20 @@ string shown in the prompt."
         (format " [%s] " (tabsession--current)))
   (force-mode-line-update t))
 
+(defun tabsession--handle-tab-open (tab)
+  "Initialize TAB after opening and refresh the mode line."
+  (unless (alist-get 'group tab)
+    (setf (alist-get 'group tab) tabsession-default-session))
+  (tabsession--update-mode-line))
+
+(defun tabsession--handle-tab-select (_previous-tab _tab)
+  "Refresh the mode line after selecting a tab."
+  (tabsession--update-mode-line))
+
+(defun tabsession--handle-tab-change-group (_tab)
+  "Refresh the mode line after changing a tab group."
+  (tabsession--update-mode-line))
+
 ;;; Sparse keymap (unbound, ready for future use)
 
 (defvar tabsession-keymap
@@ -445,12 +459,6 @@ Currently not bound to any prefix, ready for future keybindings.")
   (dolist (tab (tabsession--tabs-in-session name))
     (tab-bar-close-tab (1+ (seq-position (tabsession--all-tabs) tab #'eq)))))
 
-;;; Advice
-
-(defun tabsession--assign-new-tab (&rest _)
-  "Ensure new tabs inherit current session."
-  (tabsession--set (tabsession--current)))
-
 ;;; Minor mode
 
 (define-minor-mode tabsession-mode
@@ -472,18 +480,22 @@ Currently not bound to any prefix, ready for future keybindings.")
           (setq global-mode-string
                 (append global-mode-string
                         (list tabsession--mode-line-segment))))
-        (advice-add 'tab-bar-new-tab :after #'tabsession--assign-new-tab)
-        (advice-add 'tab-bar-select-tab :after #'tabsession--update-mode-line)
-        (advice-add 'tab-bar-close-tab :after #'tabsession--update-mode-line)
-        (advice-add 'tab-bar-change-tab-group :after #'tabsession--update-mode-line)
+        (add-hook 'tab-bar-tab-post-open-functions
+                  #'tabsession--handle-tab-open)
+        (add-hook 'tab-bar-tab-post-select-functions
+                  #'tabsession--handle-tab-select)
+        (add-hook 'tab-bar-tab-post-change-group-functions
+                  #'tabsession--handle-tab-change-group)
         ;; Ensure startup tab has a session
         (tabsession--ensure-current-session)
         (tabsession--update-mode-line))
     ;; Disable
-    (advice-remove 'tab-bar-new-tab #'tabsession--assign-new-tab)
-    (advice-remove 'tab-bar-select-tab #'tabsession--update-mode-line)
-    (advice-remove 'tab-bar-close-tab #'tabsession--update-mode-line)
-    (advice-remove 'tab-bar-change-tab-group #'tabsession--update-mode-line)
+    (remove-hook 'tab-bar-tab-post-open-functions
+                 #'tabsession--handle-tab-open)
+    (remove-hook 'tab-bar-tab-post-select-functions
+                 #'tabsession--handle-tab-select)
+    (remove-hook 'tab-bar-tab-post-change-group-functions
+                 #'tabsession--handle-tab-change-group)
     (setq tab-bar-tab-group-function tabsession--saved-tab-bar-tab-group-function)
     (setq tab-bar-format tabsession--saved-tab-bar-format)
     (setq tab-bar-show-inactive-group-tabs
