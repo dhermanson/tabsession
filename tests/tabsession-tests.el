@@ -26,7 +26,6 @@
   (setq tab-bar-show-inactive-group-tabs t)
   (setq tab-bar-tab-group-function #'tab-bar-tab-group-default)
   (setq global-mode-string nil)
-  (setq tabsession-show-inactive-groups-in-tab-bar t)
   (setq tabsession-session-hotkeys nil)
   (setq tabsession--last-session nil))
 
@@ -163,16 +162,35 @@
    (should (equal (tabsession--hotkey-session ?a) "work"))
    (should (equal (tabsession--session-hotkey "work") ?a))))
 
-(ert-deftest tabsession-test-hotkey-prompt-uses-grid-and-shows-assignments ()
+(ert-deftest tabsession-test-session-completion-annotates-hotkeys ()
   (tabsession-test--with-reset
    (tabsession-mode 1)
    (tabsession-new "work")
    (tabsession-assign-hotkey "work" ?a)
+   (should (equal (tabsession--session-annotation "work") " [a]"))
+   (should (equal (tabsession--session-annotation "main") ""))
+   (cl-letf (((symbol-function 'completing-read)
+              (lambda (_prompt collection _predicate _require-match &rest _)
+                (should (equal collection '("main" "work")))
+                (should (equal (plist-get completion-extra-properties :category)
+                               'tabsession-session))
+                (should (eq (plist-get completion-extra-properties :annotation-function)
+                            'tabsession--session-annotation))
+                "work")))
+     (should (equal (tabsession-read) "work")))))
+
+(ert-deftest tabsession-test-hotkey-prompt-uses-grid-and-shows-assignments ()
+  (tabsession-test--with-reset
+   (tabsession-mode 1)
+   (tabsession-new "work")
+   (tabsession-new "alpha")
+   (tabsession-assign-hotkey "work" ?z)
+   (tabsession-assign-hotkey "alpha" ?a)
    (let* ((prompt (tabsession--hotkey-prompt "Assign hotkey to work"))
           (lines (split-string prompt "\n")))
      (should (string-match-p "Assign hotkey to work" prompt))
-     (should (string-match-p "\\[a\\].*work" (nth 1 lines)))
-     (should (string-match-p "\\[s\\].*unbound" (nth 2 lines)))
+     (should (string-match-p "\\[a\\].*alpha" (nth 1 lines)))
+     (should (string-match-p "\\[z\\].*work" (nth 2 lines)))
      (should (eq (get-text-property 0 'face prompt)
                  'minibuffer-prompt))
      (should (text-property-any
@@ -185,7 +203,7 @@
    (tabsession-assign-hotkey "work" ?a)
    (let ((prompt (tabsession--bound-hotkey-prompt "Jump to session hotkey")))
      (should (string-match-p "\\[a\\].*work" prompt))
-     (should-not (string-match-p "\\[s\\].*unbound" prompt)))))
+     (should-not (string-match-p "unbound" prompt)))))
 
 (ert-deftest tabsession-test-jump-hotkey-switches-session ()
   (tabsession-test--with-reset
@@ -201,6 +219,36 @@
    (tabsession-mode 1)
    (should (equal (tabsession-jump-hotkey ?a)
                   "No session is bound to [a]"))))
+
+(ert-deftest tabsession-test-read-available-hotkey-retries-on-conflict ()
+  (tabsession-test--with-reset
+   (tabsession-mode 1)
+   (tabsession-new "work")
+   (tabsession-new "mail")
+   (tabsession-assign-hotkey "work" ?a)
+   (let ((messages nil))
+     (cl-letf (((symbol-function 'read-key)
+                (let ((keys '(?a ?b)))
+                  (lambda (_prompt)
+                    (prog1 (car keys)
+                      (setq keys (cdr keys))))))
+               ((symbol-function 'message)
+                (lambda (fmt &rest args)
+                  (push (apply #'format fmt args) messages)))
+               ((symbol-function 'sit-for)
+                (lambda (&rest _) nil)))
+       (should (equal (tabsession--read-available-hotkey "mail") ?b))
+       (should (equal (car messages)
+                      "Hotkey [a] is already assigned to work. Choose another."))))))
+
+(ert-deftest tabsession-test-assign-hotkey-errors-when-key-already-used ()
+  (tabsession-test--with-reset
+   (tabsession-mode 1)
+   (tabsession-new "work")
+   (tabsession-new "mail")
+   (tabsession-assign-hotkey "work" ?a)
+   (should-error (tabsession-assign-hotkey "mail" ?a)
+                 :type 'user-error)))
 
 (ert-deftest tabsession-test-read-bound-hotkey-errors-when-none-assigned ()
   (tabsession-test--with-reset
@@ -345,7 +393,6 @@
 
 (ert-deftest tabsession-test-tab-bar-hides-inactive-session-entries ()
   (tabsession-test--with-reset
-   (setq tabsession-show-inactive-groups-in-tab-bar nil)
    (tabsession-mode 1)
    (tabsession-new "work")
    (tabsession-switch "main")
@@ -354,20 +401,6 @@
      (should (member "main" labels))
      (should (member "*scratch* x" labels))
      (should-not (member "work" labels)))))
-
-(ert-deftest tabsession-test-tab-bar-shows-all-session-groups-when-enabled ()
-  (tabsession-test--with-reset
-   (setq tabsession-show-inactive-groups-in-tab-bar t)
-   (tabsession-mode 1)
-   (tabsession-new "work")
-   (tab-bar-rename-tab "work-1")
-   (tabsession-switch "main")
-   (let ((labels
-          (mapcar #'caddr (tab-bar-format-tabs-groups))))
-     (should (member "main" labels))
-     (should (member "*scratch* x" labels))
-     (should (member "work" labels))
-     (should-not (member "work-1 x" labels)))))
 
 (ert-deftest tabsession-test-mode-survives-dired-buffer-switch ()
   (tabsession-test--with-reset

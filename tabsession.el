@@ -1,4 +1,5 @@
 ;;; tabsession.el --- tmux-like sessions using tab-bar groups -*- lexical-binding: t; -*-
+;; Package-Requires: ((emacs "31.0"))
 
 (require 'cl-lib)
 (require 'subr-x)
@@ -24,14 +25,6 @@
 (defcustom tabsession-default-session "main"
   "Default session name."
   :type 'string)
-
-(defcustom tabsession-show-inactive-groups-in-tab-bar nil
-  "Whether to show inactive session group labels in the tab bar.
-
-When non-nil, `tabsession-mode' uses `tab-bar-format-tabs-groups'
-so inactive session headers appear in the tab bar.  When nil, only the
-current session label and tabs are shown."
-  :type 'boolean)
 
 (defvar tabsession--saved-tab-bar-tab-group-function nil
   "Original value of `tab-bar-tab-group-function'
@@ -205,9 +198,7 @@ before enabling `tabsession-mode'.")
   "Return FORMAT adjusted for `tabsession-mode'."
   (mapcar (lambda (item)
             (if (memq item '(tab-bar-format-tabs tab-bar-format-tabs-groups))
-                (if tabsession-show-inactive-groups-in-tab-bar
-                    'tab-bar-format-tabs-groups
-                  'tabsession--format-tabs)
+                'tabsession--format-tabs
               item))
           format))
 
@@ -279,17 +270,6 @@ ENTRIES should already include any text properties to render."
      (propertize (concat title "\n") 'face 'minibuffer-prompt)
      (string-join (nreverse lines) "\n"))))
 
-(defun tabsession--normalize-hotkey (key)
-  "Return normalized hotkey character for KEY."
-  (let ((normalized (downcase key)))
-    (unless (memq normalized tabsession--selector-key-preference)
-      (user-error "Hotkey must be one of: %s"
-                  (string-join
-                   (mapcar #'char-to-string
-                           tabsession--selector-key-preference)
-                   " ")))
-    normalized))
-
 (defun tabsession--session-hotkey (name)
   "Return the hotkey assigned to session NAME, or nil."
   (car (rassoc name tabsession-session-hotkeys)))
@@ -307,7 +287,12 @@ ENTRIES should already include any text properties to render."
 
 (defun tabsession--assign-hotkey (key name)
   "Assign hotkey KEY to session NAME."
-  (setq key (tabsession--normalize-hotkey key))
+  (let ((existing (tabsession--hotkey-session key)))
+    (when (and existing
+               (not (equal existing name)))
+      (user-error "Hotkey [%s] is already assigned to %s"
+                  (single-key-description key)
+                  existing)))
   (tabsession--clear-session-hotkey name)
   (setf (alist-get key tabsession-session-hotkeys) name)
   key)
@@ -324,36 +309,38 @@ ENTRIES should already include any text properties to render."
     (setq tabsession--last-session new-name)))
 
 (defun tabsession--hotkey-candidates ()
-  "Return hotkey candidates in selector order.
+  "Return bound hotkey candidates sorted alphabetically by key label.
 
 Each item has the form (KEY SESSION LABEL)."
   (mapcar
-   (lambda (key)
-     (let ((session (tabsession--hotkey-session key)))
+   (lambda (binding)
+     (let ((key (car binding))
+           (session (cdr binding)))
        (list key
              session
              (concat
-              (propertize (format "[%c]" key)
+              (propertize (format "[%s]" (single-key-description key))
                           'face 'tabsession-quick-select-key)
               " "
-              (propertize (or session "unbound")
+              (propertize session
                           'face 'tabsession-quick-select-session)))))
-   tabsession--selector-key-preference))
+   (sort (copy-sequence tabsession-session-hotkeys)
+         (lambda (left right)
+           (string-lessp (single-key-description (car left))
+                         (single-key-description (car right)))))))
 
 (defun tabsession--bound-hotkey-candidates ()
-  "Return bound hotkey candidates in selector order.
-
-Each item has the form (KEY SESSION LABEL)."
-  (seq-filter
-   (lambda (candidate)
-     (cadr candidate))
-   (tabsession--hotkey-candidates)))
+  "Return bound hotkey candidates."
+  (tabsession--hotkey-candidates))
 
 (defun tabsession--hotkey-prompt (title)
   "Return a prompt with TITLE for selecting a session hotkey."
-  (tabsession--format-menu
-   title
-   (mapcar #'cl-third (tabsession--hotkey-candidates))))
+  (let ((entries (mapcar #'cl-third (tabsession--hotkey-candidates))))
+    (if entries
+        (tabsession--format-menu title entries)
+      (concat
+       (propertize (concat title "\n") 'face 'minibuffer-prompt)
+       "No hotkeys assigned"))))
 
 (defun tabsession--bound-hotkey-prompt (title)
   "Return a prompt with TITLE for selecting a bound hotkey."
@@ -363,17 +350,29 @@ Each item has the form (KEY SESSION LABEL)."
 
 (defun tabsession-read-hotkey (&optional title)
   "Prompt for a hotkey using `read-key' with TITLE."
-  (tabsession--normalize-hotkey
-   (read-key (tabsession--hotkey-prompt (or title "Select hotkey")))))
+  (read-key (tabsession--hotkey-prompt (or title "Select hotkey"))))
 
 (defun tabsession-read-bound-hotkey (&optional title)
   "Prompt for a bound hotkey using `read-key' with TITLE."
   (let ((candidates (tabsession--bound-hotkey-candidates)))
     (unless candidates
       (user-error "No session hotkeys are assigned"))
-    (tabsession--normalize-hotkey
-     (read-key (tabsession--bound-hotkey-prompt
-                (or title "Jump to session hotkey"))))))
+    (read-key (tabsession--bound-hotkey-prompt
+               (or title "Jump to session hotkey")))))
+
+(defun tabsession--read-available-hotkey (name)
+  "Prompt until an available hotkey is chosen for NAME."
+  (let ((key (tabsession-read-hotkey
+              (format "Assign hotkey to %s" name))))
+    (if-let* ((existing (tabsession--hotkey-session key)))
+        (if (equal existing name)
+            key
+          (message "Hotkey [%s] is already assigned to %s. Choose another."
+                   (single-key-description key)
+                   existing)
+          (sit-for 1)
+          (tabsession--read-available-hotkey name))
+      key)))
 
 (defun tabsession--rename-session-tabs (old-name new-name)
   "Rename OLD-NAME session tabs to NEW-NAME."
@@ -449,9 +448,30 @@ Currently not bound to any prefix, ready for future keybindings.")
 
 ;;; Completing read candidates
 
-(defun tabsession-read ()
-  "Prompt for a session using `completing-read`."
-  (completing-read "Session: " (tabsession--sessions) nil t))
+(defun tabsession--session-annotation (candidate)
+  "Return completion annotation for session CANDIDATE."
+  (if-let* ((key (tabsession--session-hotkey candidate)))
+      (format " [%s]" (single-key-description key))
+    ""))
+
+(defun tabsession-read (&optional prompt)
+  "Prompt for a session using `completing-read` with PROMPT."
+  (let ((completion-extra-properties
+         '(:category tabsession-session
+           :annotation-function tabsession--session-annotation)))
+    (completing-read (or prompt "Session: ")
+                     (tabsession--sessions)
+                     nil t)))
+
+(with-eval-after-load 'marginalia
+  (defun marginalia-annotate-tabsession-session (candidate)
+    "Annotate tabsession CANDIDATE with its assigned hotkey."
+    (tabsession--session-annotation candidate))
+  (add-to-list 'marginalia-annotators
+               '(tabsession-session
+                 marginalia-annotate-tabsession-session
+                 builtin
+                 none)))
 
 (defun tabsession--read-switch-session ()
   "Read a session name for `tabsession-switch'."
@@ -492,22 +512,20 @@ Currently not bound to any prefix, ready for future keybindings.")
   (interactive
    (let ((name (tabsession-read)))
      (list name
-           (tabsession-read-hotkey
-            (format "Assign hotkey to %s" name)))))
+           (tabsession--read-available-hotkey name))))
   (setq key (tabsession--assign-hotkey key name))
-  (message "Bound session %s to [%c]" name key))
+  (message "Bound session %s to [%s]" name (single-key-description key)))
 
 (defun tabsession-jump-hotkey (key)
   "Jump to the session bound to hotkey KEY."
   (interactive (list (tabsession-read-bound-hotkey "Jump to session hotkey")))
-  (setq key (tabsession--normalize-hotkey key))
   (if-let* ((session (tabsession--hotkey-session key)))
       (tabsession-switch session)
-    (message "No session is bound to [%c]" key)))
+    (message "No session is bound to [%s]" (single-key-description key))))
 
 (defun tabsession-new (name)
   "Create new session NAME."
-  (interactive "sNew session: ")
+  (interactive (list (read-string "New session: ")))
   (tab-bar-new-tab)
   (tabsession--set name))
 

@@ -36,6 +36,7 @@ If you use `use-package`, configure it like this:
 
 ```elisp
 (use-package tabsession
+  :vc (:url "https://github.com/dhermanson/tabsession" :rev :newest)
   :bind-keymap
   ("C-c t g" . tabsession-keymap)
   ("s-t" . tabsession-keymap)
@@ -43,29 +44,14 @@ If you use `use-package`, configure it like this:
   (tabsession-mode 1))
 ```
 
-By default, `tabsession-mode` shows the current session label in the tab bar
-while still hiding inactive session headers and tabs.
-
-If you want to show inactive session headers in the tab bar, set
-`tabsession-show-inactive-groups-in-tab-bar` to `t` before enabling
-`tabsession-mode`:
-
-```elisp
-(use-package tabsession
-  :custom
-  (tabsession-show-inactive-groups-in-tab-bar t)
-  :bind-keymap
-  ("C-c t g" . tabsession-keymap)
-  ("s-t" . tabsession-keymap)
-  :config
-  (tabsession-mode 1))
-```
-
-With this setting, the tab bar shows all session headers while only the
-current session's tabs remain visible.
+`tabsession-mode` shows the current session label in the tab bar while keeping
+inactive session headers and tabs hidden.
 
 `tabsession-jump-hotkey` uses the same styled `read-key` menu as session
 switching and shows any assigned hotkeys directly in the prompt.
+
+If you use Marginalia, session completion also shows any assigned hotkey as an
+annotation. Marginalia is optional and not required for `tabsession`.
 
 ## Testing
 
