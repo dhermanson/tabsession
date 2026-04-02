@@ -56,6 +56,31 @@
    (should (equal (sort (tabsession--sessions) #'string<)
                   '("main" "work")))))
 
+(ert-deftest tabsession-test-switch-prefers-most-recent-tab-in-session ()
+  (tabsession-test--with-reset
+   (tabsession-mode 1)
+   (tabsession-new "work")
+   (tab-bar-rename-tab "work-1")
+   (tab-bar-new-tab)
+   (tabsession--set "work")
+   (tab-bar-rename-tab "work-2")
+   (tabsession-switch "main")
+   (tabsession-switch "work")
+   (should (equal (alist-get 'name (tab-bar--current-tab)) "work-2"))))
+
+(ert-deftest tabsession-test-switch-falls-back-when-mru-tab-was-closed ()
+  (tabsession-test--with-reset
+   (tabsession-mode 1)
+   (tabsession-new "work")
+   (tab-bar-rename-tab "work-1")
+   (tab-bar-new-tab)
+   (tabsession--set "work")
+   (tab-bar-rename-tab "work-2")
+   (tab-bar-close-tab)
+   (tabsession-switch "main")
+   (tabsession-switch "work")
+   (should (equal (alist-get 'name (tab-bar--current-tab)) "work-1"))))
+
 (ert-deftest tabsession-test-read-switch-session-uses-first-selector-key ()
   (tabsession-test--with-reset
    (tabsession-mode 1)

@@ -149,6 +149,14 @@ before enabling `tabsession-mode'.")
      (equal (tabsession--tab-group tab) name))
    (tabsession--all-tabs)))
 
+(defun tabsession--preferred-tab (name)
+  "Return the preferred tab to select for session NAME."
+  (car (seq-sort-by
+        (lambda (tab)
+          (or (alist-get 'time tab) 0))
+        #'>
+        (tabsession--tabs-in-session name))))
+
 (defun tabsession--sorted-sessions ()
   "Return session names sorted alphabetically."
   (sort (copy-sequence (tabsession--sessions)) #'string-lessp))
@@ -382,11 +390,7 @@ Currently not bound to any prefix, ready for future keybindings.")
 (defun tabsession-switch (name)
   "Switch to session NAME."
   (interactive (list (tabsession--read-switch-session)))
-  (let ((tab
-         (seq-find
-          (lambda (tab)
-            (equal (tabsession--tab-group tab) name))
-          (tabsession--all-tabs))))
+  (let ((tab (tabsession--preferred-tab name)))
     (when tab
       (tabsession--select-tab tab))))
 
