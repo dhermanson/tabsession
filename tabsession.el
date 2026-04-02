@@ -461,6 +461,22 @@ string shown in the prompt."
                    (member fallback-session (tabsession--sessions)))
           (tabsession-switch fallback-session))))))
 
+(defun tabsession--advice-close-other-tabs (orig &optional tab-number)
+  "Restrict `tab-bar-close-other-tabs' ORIG to the current session."
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
+      (funcall orig tab-number)
+    (let* ((tabs (tabsession--tabs-in-current-session))
+           (target-tab (if tab-number
+                           (nth (1- tab-number) tabs)
+                         (tabsession--current-tab-in-list (tabsession--all-tabs)))))
+      (unless target-tab
+        (user-error "No such tab in current session: %s" tab-number))
+      (tabsession--select-tab target-tab)
+      (dolist (tab (delq target-tab (copy-sequence tabs)))
+        (when-let* ((position (seq-position (tabsession--all-tabs) tab #'eq)))
+          (tabsession--call-unscoped #'tab-bar-close-tab (1+ position)))))))
+
 ;;; Sparse keymap (unbound, ready for future use)
 
 (defvar tabsession-keymap
@@ -621,6 +637,8 @@ Currently not bound to any prefix, ready for future keybindings.")
                     #'tabsession--advice-select-tab)
         (advice-add 'tab-bar-close-tab :around
                     #'tabsession--advice-close-tab)
+        (advice-add 'tab-bar-close-other-tabs :around
+                    #'tabsession--advice-close-other-tabs)
         (advice-add 'tab-move :around
                     #'tabsession--advice-move-tab)
         (advice-add 'tab-bar-move-tab :around
@@ -644,6 +662,8 @@ Currently not bound to any prefix, ready for future keybindings.")
                    #'tabsession--advice-select-tab)
     (advice-remove 'tab-bar-close-tab
                    #'tabsession--advice-close-tab)
+    (advice-remove 'tab-bar-close-other-tabs
+                   #'tabsession--advice-close-other-tabs)
     (advice-remove 'tab-move
                    #'tabsession--advice-move-tab)
     (advice-remove 'tab-bar-move-tab
