@@ -74,6 +74,3 @@ Run the ERT test suite in batch mode from the repository root:
 ```sh
 emacs -Q --batch -L . -L tests -l tests/tabsession-tests.el -f ert-run-tests-batch-and-exit
 ```
-
-
-test main push
