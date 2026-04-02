@@ -25,7 +25,7 @@
   "Default session name."
   :type 'string)
 
-(defcustom tabsession-show-groups-in-tab-bar t
+(defcustom tabsession-show-groups-in-tab-bar nil
   "Whether to show session group labels in the tab bar.
 
 When non-nil, `tabsession-mode' replaces `tab-bar-format-tabs'
