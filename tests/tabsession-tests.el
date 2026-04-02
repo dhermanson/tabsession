@@ -166,12 +166,14 @@
   (tabsession-test--with-reset
    (tabsession-mode 1)
    (tabsession-new "work")
-   (tabsession-assign-hotkey "work" ?a)
+   (tabsession-new "alpha")
+   (tabsession-assign-hotkey "work" ?z)
+   (tabsession-assign-hotkey "alpha" ?a)
    (let* ((prompt (tabsession--hotkey-prompt "Assign hotkey to work"))
           (lines (split-string prompt "\n")))
      (should (string-match-p "Assign hotkey to work" prompt))
-     (should (string-match-p "\\[a\\].*work" (nth 1 lines)))
-     (should (string-match-p "\\[s\\].*unbound" (nth 2 lines)))
+     (should (string-match-p "\\[a\\].*alpha" (nth 1 lines)))
+     (should (string-match-p "\\[z\\].*work" (nth 2 lines)))
      (should (eq (get-text-property 0 'face prompt)
                  'minibuffer-prompt))
      (should (text-property-any
@@ -184,7 +186,7 @@
    (tabsession-assign-hotkey "work" ?a)
    (let ((prompt (tabsession--bound-hotkey-prompt "Jump to session hotkey")))
      (should (string-match-p "\\[a\\].*work" prompt))
-     (should-not (string-match-p "\\[s\\].*unbound" prompt)))))
+     (should-not (string-match-p "unbound" prompt)))))
 
 (ert-deftest tabsession-test-jump-hotkey-switches-session ()
   (tabsession-test--with-reset
@@ -200,6 +202,49 @@
    (tabsession-mode 1)
    (should (equal (tabsession-jump-hotkey ?a)
                   "No session is bound to [a]"))))
+
+(ert-deftest tabsession-test-read-available-hotkey-retries-on-conflict ()
+  (tabsession-test--with-reset
+   (tabsession-mode 1)
+   (tabsession-new "work")
+   (tabsession-new "mail")
+   (tabsession-assign-hotkey "work" ?a)
+   (let ((messages nil))
+     (cl-letf (((symbol-function 'read-key)
+                (let ((keys '(?a ?b)))
+                  (lambda (_prompt)
+                    (prog1 (car keys)
+                      (setq keys (cdr keys))))))
+               ((symbol-function 'message)
+                (lambda (fmt &rest args)
+                  (push (apply #'format fmt args) messages)))
+               ((symbol-function 'sit-for)
+                (lambda (&rest _) nil)))
+       (should (equal (tabsession--read-available-hotkey "mail") ?b))
+       (should (equal (car messages)
+                      "Hotkey [a] is already assigned to work. Choose another."))))))
+
+(ert-deftest tabsession-test-assign-hotkey-errors-when-key-already-used ()
+  (tabsession-test--with-reset
+   (tabsession-mode 1)
+   (tabsession-new "work")
+   (tabsession-new "mail")
+   (tabsession-assign-hotkey "work" ?a)
+   (should-error (tabsession-assign-hotkey "mail" ?a)
+                 :type 'user-error)))
+
+(ert-deftest tabsession-test-new-session-offers-hotkey-assignment ()
+  (tabsession-test--with-reset
+   (tabsession-mode 1)
+   (cl-letf (((symbol-function 'read-string)
+              (lambda (&rest _) "focus"))
+             ((symbol-function 'y-or-n-p)
+              (lambda (_prompt) t))
+             ((symbol-function 'tabsession--read-available-hotkey)
+              (lambda (_name) ?x)))
+     (call-interactively #'tabsession-new)
+     (should (equal (tabsession--current) "focus"))
+     (should (equal (tabsession--hotkey-session ?x) "focus")))))
 
 (ert-deftest tabsession-test-read-bound-hotkey-errors-when-none-assigned ()
   (tabsession-test--with-reset
