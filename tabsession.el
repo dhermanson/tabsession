@@ -454,7 +454,10 @@ string shown in the prompt."
            (fallback-session (and last-tab-in-session-p
                                   (tabsession--fallback-session current-session))))
       (prog1
-          (apply orig args)
+          ;; `tab-bar-close-tab' may re-select a surviving tab by its global
+          ;; tab-bar index while tearing down the closed tab. Bypass
+          ;; session-scoped advice for that internal selection.
+          (apply #'tabsession--call-unscoped orig args)
         (tabsession--cleanup-removed-sessions before-sessions)
         (when (and fallback-session
                    (not (member current-session (tabsession--sessions)))
