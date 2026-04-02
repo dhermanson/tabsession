@@ -534,12 +534,22 @@ Currently not bound to any prefix, ready for future keybindings.")
 
 ;;; Commands
 
-(defun tabsession-switch (name)
-  "Switch to session NAME."
-  (interactive (list (tabsession--read-switch-session)))
+(defun tabsession-switch-by-name (name)
+  "Switch to session NAME.
+
+This is the public entry point for switching sessions directly by
+name."
+  (interactive (list (tabsession-read)))
+  (unless (member name (tabsession--sessions))
+    (user-error "No such session: %s" name))
   (let ((tab (tabsession--preferred-tab name)))
     (when tab
       (tabsession--select-tab tab))))
+
+(defun tabsession-switch (name)
+  "Switch to session NAME."
+  (interactive (list (tabsession--read-switch-session)))
+  (tabsession-switch-by-name name))
 
 (defun tabsession-switch-completing (name)
   "Switch to session NAME using minibuffer completion."
