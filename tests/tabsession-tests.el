@@ -391,6 +391,22 @@
                   '("work-1")))
    (should (equal (tabsession--sessions) '("main" "work")))))
 
+(ert-deftest tabsession-test-tab-close-does-not-use-global-index-in-session-scope ()
+  (tabsession-test--with-reset
+   (tabsession-test--interleaved-tabs)
+   (should (eq (condition-case nil
+                   (progn
+                     (tab-bar-close-tab 1)
+                     'ok)
+                 (user-error 'user-error))
+               'ok))
+   (should (equal (mapcar (lambda (tab) (alist-get 'name tab))
+                          (tabsession--tabs-in-session "main"))
+                  '("main-2")))
+   (should (equal (mapcar (lambda (tab) (alist-get 'name tab))
+                          (tabsession--tabs-in-session "work"))
+                  '("work-1")))))
+
 (ert-deftest tabsession-test-tab-move-stays-in-current-session ()
   (tabsession-test--with-reset
    (tabsession-test--interleaved-tabs)
