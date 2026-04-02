@@ -36,6 +36,7 @@ If you use `use-package`, configure it like this:
 
 ```elisp
 (use-package tabsession
+  :vc (:url "https://github.com/dhermanson/tabsession" :rev :newest)
   :bind-keymap
   ("C-c t g" . tabsession-keymap)
   ("s-t" . tabsession-keymap)
@@ -48,6 +49,9 @@ inactive session headers and tabs hidden.
 
 `tabsession-jump-hotkey` uses the same styled `read-key` menu as session
 switching and shows any assigned hotkeys directly in the prompt.
+
+If you use Marginalia, session completion also shows any assigned hotkey as an
+annotation. Marginalia is optional and not required for `tabsession`.
 
 ## Testing
 

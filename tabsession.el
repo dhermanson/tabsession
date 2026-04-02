@@ -1,4 +1,5 @@
 ;;; tabsession.el --- tmux-like sessions using tab-bar groups -*- lexical-binding: t; -*-
+;; Package-Requires: ((emacs "31.0"))
 
 (require 'cl-lib)
 (require 'subr-x)
