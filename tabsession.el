@@ -25,13 +25,12 @@
   "Default session name."
   :type 'string)
 
-(defcustom tabsession-show-groups-in-tab-bar nil
-  "Whether to show session group labels in the tab bar.
+(defcustom tabsession-show-inactive-groups-in-tab-bar nil
+  "Whether to show inactive session group labels in the tab bar.
 
-When non-nil, `tabsession-mode' replaces `tab-bar-format-tabs'
-with `tab-bar-format-tabs-groups'.  When nil, tabs stay grouped
-internally for session behavior, but the tab bar renders plain tabs
-without the extra group labels."
+When non-nil, `tabsession-mode' uses `tab-bar-format-tabs-groups'
+so inactive session headers appear in the tab bar.  When nil, only the
+current session label and tabs are shown."
   :type 'boolean)
 
 ;;; Mode line
@@ -112,15 +111,18 @@ before enabling `tabsession-mode'.")
   "Return FORMAT adjusted for `tabsession-mode'."
   (mapcar (lambda (item)
             (if (memq item '(tab-bar-format-tabs tab-bar-format-tabs-groups))
-                'tabsession--format-tabs
+                (if tabsession-show-inactive-groups-in-tab-bar
+                    'tab-bar-format-tabs-groups
+                  'tabsession--format-tabs)
               item))
           format))
 
 (defun tabsession--format-tabs ()
   "Produce tab-bar items for the current session only."
   (let* ((tabs (funcall tab-bar-tabs-function))
-         (current-group (funcall tab-bar-tab-group-function
-                                 (tab-bar--current-tab-find tabs)))
+         (current-tab (tab-bar--current-tab-find tabs))
+         (current-group (and current-tab
+                             (funcall tab-bar-tab-group-function current-tab)))
          (visible-tabs
           (seq-filter
            (lambda (tab)
@@ -128,8 +130,8 @@ before enabling `tabsession-mode'.")
            tabs))
          (i 0))
     (append
-     (when (and tabsession-show-groups-in-tab-bar current-group visible-tabs)
-       (tab-bar--format-tab-group (car visible-tabs) 1 t))
+     (when (and current-tab current-group)
+       (tab-bar--format-tab-group current-tab 1 t))
      (mapcan
       (lambda (tab)
         (setq i (1+ i))

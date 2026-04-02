@@ -26,7 +26,7 @@
   (setq tab-bar-show-inactive-group-tabs t)
   (setq tab-bar-tab-group-function #'tab-bar-tab-group-default)
   (setq global-mode-string nil)
-  (setq tabsession-show-groups-in-tab-bar t)
+  (setq tabsession-show-inactive-groups-in-tab-bar t)
   (setq tabsession-session-hotkeys nil)
   (setq tabsession--last-session nil)
   (setq tabsession--mode-line-string nil))
@@ -305,6 +305,7 @@
 
 (ert-deftest tabsession-test-tab-bar-hides-inactive-session-entries ()
   (tabsession-test--with-reset
+   (setq tabsession-show-inactive-groups-in-tab-bar nil)
    (tabsession-mode 1)
    (tabsession-new "work")
    (tabsession-switch "main")
@@ -313,6 +314,20 @@
      (should (member "main" labels))
      (should (member "*scratch* x" labels))
      (should-not (member "work" labels)))))
+
+(ert-deftest tabsession-test-tab-bar-shows-all-session-groups-when-enabled ()
+  (tabsession-test--with-reset
+   (setq tabsession-show-inactive-groups-in-tab-bar t)
+   (tabsession-mode 1)
+   (tabsession-new "work")
+   (tab-bar-rename-tab "work-1")
+   (tabsession-switch "main")
+   (let ((labels
+          (mapcar #'caddr (tab-bar-format-tabs-groups))))
+     (should (member "main" labels))
+     (should (member "*scratch* x" labels))
+     (should (member "work" labels))
+     (should-not (member "work-1 x" labels)))))
 
 (ert-deftest tabsession-test-modeline-segment-survives-dired-buffer-switch ()
   (tabsession-test--with-reset

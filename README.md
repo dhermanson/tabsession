@@ -37,28 +37,33 @@ If you use `use-package`, configure it like this:
 
 ```elisp
 (use-package tabsession
-  :bind-keymap ("C-c t g" . tabsession-keymap)
+  :bind-keymap
+  ("C-c t g" . tabsession-keymap)
+  ("s-t" . tabsession-keymap)
   :config
   (tabsession-mode 1))
 ```
 
-By default, `tabsession-mode` hides tab-group labels in the tab bar even though
-it still uses tab groups internally for session behavior.
+By default, `tabsession-mode` shows the current session label in the tab bar
+while still hiding inactive session headers and tabs.
 
-If you want to show group labels in the tab bar, set
-`tabsession-show-groups-in-tab-bar` to `t` before enabling
+If you want to show inactive session headers in the tab bar, set
+`tabsession-show-inactive-groups-in-tab-bar` to `t` before enabling
 `tabsession-mode`:
 
 ```elisp
 (use-package tabsession
   :custom
-  (tabsession-show-groups-in-tab-bar t)
-  :bind-keymap ("C-c t g" . tabsession-keymap)
+  (tabsession-show-inactive-groups-in-tab-bar t)
+  :bind-keymap
+  ("C-c t g" . tabsession-keymap)
+  ("s-t" . tabsession-keymap)
   :config
   (tabsession-mode 1))
 ```
 
-With this setting, the tab bar shows group headers for the current session.
+With this setting, the tab bar shows all session headers while only the
+current session's tabs remain visible.
 
 `tabsession-jump-hotkey` uses the same styled `read-key` menu as session
 switching and shows any assigned hotkeys directly in the prompt.
