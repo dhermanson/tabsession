@@ -9,7 +9,6 @@ as the tab's session. When the mode is enabled:
 - switching sessions selects a tab from that session
 - killing a session closes all tabs in that session
 - the tab bar only shows tabs from the current session
-- the current session name is shown in the mode line
 
 This gives you separate tab collections that behave more like independent
 workspaces, while still using the built-in `tab-bar` implementation underneath.

@@ -28,8 +28,7 @@
   (setq global-mode-string nil)
   (setq tabsession-show-inactive-groups-in-tab-bar t)
   (setq tabsession-session-hotkeys nil)
-  (setq tabsession--last-session nil)
-  (setq tabsession--mode-line-string nil))
+  (setq tabsession--last-session nil))
 
 (defmacro tabsession-test--with-reset (&rest body)
   "Run BODY after resetting tab-bar and tabsession state."
@@ -290,18 +289,15 @@
                             tab-bar-format-tabs
                             tab-bar-separator))
          (original-group-function #'tab-bar-tab-group-default)
-         (original-show-inactive t)
-         (original-global-mode-string '("clock")))
+         (original-show-inactive t))
      (setq tab-bar-format original-format)
      (setq tab-bar-tab-group-function original-group-function)
      (setq tab-bar-show-inactive-group-tabs original-show-inactive)
-     (setq global-mode-string original-global-mode-string)
      (tabsession-mode 1)
      (tabsession-mode 0)
      (should (equal tab-bar-format original-format))
      (should (eq tab-bar-tab-group-function original-group-function))
-     (should (eq tab-bar-show-inactive-group-tabs original-show-inactive))
-     (should (equal global-mode-string original-global-mode-string)))))
+     (should (eq tab-bar-show-inactive-group-tabs original-show-inactive)))))
 
 (ert-deftest tabsession-test-tab-bar-hides-inactive-session-entries ()
   (tabsession-test--with-reset
@@ -329,11 +325,9 @@
      (should (member "work" labels))
      (should-not (member "work-1 x" labels)))))
 
-(ert-deftest tabsession-test-modeline-segment-survives-dired-buffer-switch ()
+(ert-deftest tabsession-test-mode-survives-dired-buffer-switch ()
   (tabsession-test--with-reset
    (tabsession-mode 1)
-   (should (member tabsession--mode-line-segment global-mode-string))
-   (should (equal tabsession--mode-line-string " [main] "))
+   (should (equal (tabsession--current) "main"))
    (dired default-directory)
-   (should (member tabsession--mode-line-segment global-mode-string))
-   (should (equal tabsession--mode-line-string " [main] "))))
+   (should (equal (tabsession--current) "main"))))

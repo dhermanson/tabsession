@@ -33,15 +33,6 @@ so inactive session headers appear in the tab bar.  When nil, only the
 current session label and tabs are shown."
   :type 'boolean)
 
-;;; Mode line
-
-(defvar tabsession--mode-line-string nil
-  "String displayed in the mode line for the current tab session.")
-
-(defconst tabsession--mode-line-segment
-  '(:eval tabsession--mode-line-string)
-  "Mode line segment used by `tabsession-mode'.")
-
 (defvar tabsession--saved-tab-bar-tab-group-function nil
   "Original value of `tab-bar-tab-group-function'
 before enabling `tabsession-mode'.")
@@ -84,8 +75,7 @@ before enabling `tabsession-mode'.")
 
 (defun tabsession--set (name)
   "Assign current tab to session NAME."
-  (tab-bar-change-tab-group name)
-  (tabsession--update-mode-line))
+  (tab-bar-change-tab-group name))
 
 (defun tabsession--tabs (&optional frame)
   "Return all tabs for FRAME."
@@ -331,27 +321,10 @@ string shown in the prompt."
       (user-error "No session is bound to %s" (single-key-description key)))
     (cadr selection)))
 
-;;; Mode line
-
-(defun tabsession--update-mode-line (&rest _)
-  "Update mode line with current session."
-  (setq tabsession--mode-line-string
-        (format " [%s] " (tabsession--current)))
-  (force-mode-line-update t))
-
 (defun tabsession--handle-tab-open (tab)
-  "Initialize TAB after opening and refresh the mode line."
+  "Initialize TAB after opening."
   (unless (alist-get 'group tab)
-    (setf (alist-get 'group tab) tabsession-default-session))
-  (tabsession--update-mode-line))
-
-(defun tabsession--handle-tab-select (_previous-tab _tab)
-  "Refresh the mode line after selecting a tab."
-  (tabsession--update-mode-line))
-
-(defun tabsession--handle-tab-change-group (_tab)
-  "Refresh the mode line after changing a tab group."
-  (tabsession--update-mode-line))
+    (setf (alist-get 'group tab) tabsession-default-session)))
 
 ;;; Sparse keymap (unbound, ready for future use)
 
@@ -451,8 +424,7 @@ Currently not bound to any prefix, ready for future keybindings.")
   (unless (equal old-name new-name)
     (tabsession--rename-session-tabs old-name new-name)
     (tabsession--rename-hotkey-session old-name new-name)
-    (tabsession--rename-last-session old-name new-name)
-    (tabsession--update-mode-line)))
+    (tabsession--rename-last-session old-name new-name)))
 
 (defun tabsession-kill (name)
   "Kill session NAME."
@@ -477,49 +449,31 @@ Currently not bound to any prefix, ready for future keybindings.")
         (setq tabsession--saved-tab-bar-format tab-bar-format)
         (setq tabsession--saved-tab-bar-show-inactive-group-tabs
               tab-bar-show-inactive-group-tabs)
-        ;; Assign tab group and visibility logic
         (setq tab-bar-tab-group-function #'tabsession--tab-group)
         (setq tab-bar-format
               (tabsession--tab-bar-format tab-bar-format))
         (setq tab-bar-show-inactive-group-tabs nil)
-        (unless (member tabsession--mode-line-segment global-mode-string)
-          (setq global-mode-string
-                (append global-mode-string
-                        (list tabsession--mode-line-segment))))
         (add-hook 'tab-bar-tab-post-open-functions
                   #'tabsession--handle-tab-open)
-        (add-hook 'tab-bar-tab-post-select-functions
-                  #'tabsession--handle-tab-select)
-        (add-hook 'tab-bar-tab-post-change-group-functions
-                  #'tabsession--handle-tab-change-group)
         ;; Ensure startup tab has a session
-        (tabsession--ensure-current-session)
-        (tabsession--update-mode-line))
+        (tabsession--ensure-current-session))
     ;; Disable
     (remove-hook 'tab-bar-tab-post-open-functions
                  #'tabsession--handle-tab-open)
-    (remove-hook 'tab-bar-tab-post-select-functions
-                 #'tabsession--handle-tab-select)
-    (remove-hook 'tab-bar-tab-post-change-group-functions
-                 #'tabsession--handle-tab-change-group)
     (setq tab-bar-tab-group-function tabsession--saved-tab-bar-tab-group-function)
     (setq tab-bar-format tabsession--saved-tab-bar-format)
     (setq tab-bar-show-inactive-group-tabs
           tabsession--saved-tab-bar-show-inactive-group-tabs)
     (setq tabsession--saved-tab-bar-tab-group-function nil)
     (setq tabsession--saved-tab-bar-format nil)
-    (setq tabsession--saved-tab-bar-show-inactive-group-tabs nil)
-    (setq global-mode-string
-          (remove tabsession--mode-line-segment global-mode-string))
-    (setq tabsession--mode-line-string nil)))
+    (setq tabsession--saved-tab-bar-show-inactive-group-tabs nil)))
 
 ;;; Startup safety
 
 (add-hook 'emacs-startup-hook
           (lambda ()
             (when tabsession-mode
-              (tabsession--ensure-current-session)
-              (tabsession--update-mode-line))))
+              (tabsession--ensure-current-session))))
 
 (provide 'tabsession)
 ;;; tabsession.el ends here
