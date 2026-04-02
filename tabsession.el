@@ -56,6 +56,9 @@ before enabling `tabsession-mode'.")
 (defvar tabsession--last-session nil
   "Previously active session name.")
 
+(defvar tabsession--inhibit-command-scoping nil
+  "When non-nil, bypass session-scoped tab-bar command advice.")
+
 ;;; Core helpers
 
 (defun tabsession--tab-group (tab)
@@ -75,6 +78,30 @@ before enabling `tabsession-mode'.")
 (defun tabsession--all-tabs (&optional frame)
   "Return the complete tab list for FRAME."
   (tab-bar-tabs frame))
+
+(defun tabsession--current-tab-in-list (tabs)
+  "Return the current tab object from TABS."
+  (seq-find (lambda (tab)
+              (eq (car tab) 'current-tab))
+            tabs))
+
+(defun tabsession--tabs-in-current-session (&optional frame)
+  "Return tabs in the current session for FRAME."
+  (let* ((tabs (tabsession--all-tabs frame))
+         (current-tab (tabsession--current-tab-in-list tabs))
+         (current-group (and current-tab
+                             (tabsession--tab-group current-tab))))
+    (if current-group
+        (seq-filter
+         (lambda (tab)
+           (equal (tabsession--tab-group tab) current-group))
+         tabs)
+      tabs)))
+
+(defun tabsession--call-unscoped (fn &rest args)
+  "Call FN with ARGS while bypassing session-scoped advice."
+  (let ((tabsession--inhibit-command-scoping t))
+    (apply fn args)))
 
 (defun tabsession--set (name)
   "Assign current tab to session NAME."
@@ -98,7 +125,81 @@ before enabling `tabsession-mode'.")
       (tabsession--record-session-transition
        current-session
        (tabsession--tab-group tab))
-      (tab-bar-select-tab (1+ index)))))
+      (tabsession--call-unscoped #'tab-bar-select-tab (1+ index)))))
+
+(defun tabsession--switch-tab-in-current-session (arg)
+  "Switch ARG tabs within the current session."
+  (let* ((tabs (tabsession--tabs-in-current-session))
+         (current-tab (tabsession--current-tab-in-list (tabsession--all-tabs)))
+         (current-index (seq-position tabs current-tab #'eq)))
+    (when (and current-index tabs)
+      (tabsession--select-tab
+       (nth (mod (+ current-index arg) (length tabs))
+            tabs)))))
+
+(defun tabsession--move-tab-in-current-session (arg)
+  "Move the current tab ARG positions within the current session."
+  (let* ((tabs (tabsession--tabs-in-current-session))
+         (current-tab (tabsession--current-tab-in-list (tabsession--all-tabs)))
+         (current-index (seq-position tabs current-tab #'eq)))
+    (when (and current-index (> (length tabs) 1))
+      (let* ((target-index (max 0 (min (+ current-index arg)
+                                       (1- (length tabs)))))
+             (target-tab (nth target-index tabs))
+             (target-position (seq-position (tabsession--all-tabs) target-tab #'eq)))
+        (when (and target-position (/= current-index target-index))
+          (tabsession--call-unscoped #'tab-bar-move-tab-to (1+ target-position)))))))
+
+(defun tabsession--advice-switch-to-next-tab (orig &optional arg)
+  "Restrict `tab-bar-switch-to-next-tab' ORIG to the current session."
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
+      (funcall orig arg)
+    (tabsession--switch-tab-in-current-session (or arg 1))))
+
+(defun tabsession--advice-switch-to-prev-tab (orig &optional arg)
+  "Restrict `tab-bar-switch-to-prev-tab' ORIG to the current session."
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
+      (funcall orig arg)
+    (tabsession--switch-tab-in-current-session (- (or arg 1)))))
+
+(defun tabsession--advice-select-tab (orig tab-number &rest args)
+  "Restrict `tab-bar-select-tab' ORIG to the current session."
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
+      (apply orig tab-number args)
+    (let* ((frame (car args))
+           (tab (nth (1- tab-number)
+                     (tabsession--tabs-in-current-session frame))))
+      (unless tab
+        (user-error "No such tab in current session: %s" tab-number))
+      (tabsession--select-tab tab))))
+
+(defun tabsession--advice-move-tab (orig &optional arg)
+  "Restrict `tab-bar-move-tab' ORIG to the current session."
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
+      (funcall orig arg)
+    (tabsession--move-tab-in-current-session (or arg 1))))
+
+(defun tabsession--advice-move-tab-to (orig to-position &rest args)
+  "Restrict `tab-bar-move-tab-to' ORIG to the current session."
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
+      (apply orig to-position args)
+    (let* ((tabs (tabsession--tabs-in-current-session))
+           (target-index (max 0 (min (1- to-position) (1- (length tabs)))))
+           (target-tab (nth target-index tabs))
+           (current-tab (tabsession--current-tab-in-list (tabsession--all-tabs)))
+           (target-position (and target-tab
+                                 (seq-position (tabsession--all-tabs) target-tab #'eq))))
+      (when (and target-position
+                 (not (eq target-tab current-tab)))
+        (apply #'tabsession--call-unscoped
+               #'tab-bar-move-tab-to
+               (1+ target-position)
+               args)))))
 
 (defun tabsession--tab-bar-format (format)
   "Return FORMAT adjusted for `tabsession-mode'."
@@ -458,11 +559,43 @@ Currently not bound to any prefix, ready for future keybindings.")
         (setq tab-bar-format
               (tabsession--tab-bar-format tab-bar-format))
         (setq tab-bar-show-inactive-group-tabs nil)
+        (advice-add 'tab-next :around
+                    #'tabsession--advice-switch-to-next-tab)
+        (advice-add 'tab-bar-switch-to-next-tab :around
+                    #'tabsession--advice-switch-to-next-tab)
+        (advice-add 'tab-previous :around
+                    #'tabsession--advice-switch-to-prev-tab)
+        (advice-add 'tab-bar-switch-to-prev-tab :around
+                    #'tabsession--advice-switch-to-prev-tab)
+        (advice-add 'tab-bar-select-tab :around
+                    #'tabsession--advice-select-tab)
+        (advice-add 'tab-move :around
+                    #'tabsession--advice-move-tab)
+        (advice-add 'tab-bar-move-tab :around
+                    #'tabsession--advice-move-tab)
+        (advice-add 'tab-bar-move-tab-to :around
+                    #'tabsession--advice-move-tab-to)
         (add-hook 'tab-bar-tab-post-open-functions
                   #'tabsession--handle-tab-open)
         ;; Ensure startup tab has a session
         (tabsession--ensure-current-session))
     ;; Disable
+    (advice-remove 'tab-next
+                   #'tabsession--advice-switch-to-next-tab)
+    (advice-remove 'tab-bar-switch-to-next-tab
+                   #'tabsession--advice-switch-to-next-tab)
+    (advice-remove 'tab-previous
+                   #'tabsession--advice-switch-to-prev-tab)
+    (advice-remove 'tab-bar-switch-to-prev-tab
+                   #'tabsession--advice-switch-to-prev-tab)
+    (advice-remove 'tab-bar-select-tab
+                   #'tabsession--advice-select-tab)
+    (advice-remove 'tab-move
+                   #'tabsession--advice-move-tab)
+    (advice-remove 'tab-bar-move-tab
+                   #'tabsession--advice-move-tab)
+    (advice-remove 'tab-bar-move-tab-to
+                   #'tabsession--advice-move-tab-to)
     (remove-hook 'tab-bar-tab-post-open-functions
                  #'tabsession--handle-tab-open)
     (setq tab-bar-tab-group-function tabsession--saved-tab-bar-tab-group-function)

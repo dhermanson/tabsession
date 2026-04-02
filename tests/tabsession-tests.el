@@ -38,6 +38,18 @@
          ,@body)
      (tabsession-test--reset-state)))
 
+(defun tabsession-test--interleaved-tabs ()
+  "Create an interleaved tab layout for session-scoping tests."
+  (tabsession-mode 1)
+  (tab-bar-rename-tab "main-1")
+  (tabsession-new "work")
+  (tab-bar-rename-tab "work-1")
+  (tabsession-switch "main")
+  (tab-bar-new-tab)
+  (tab-bar-rename-tab "main-2")
+  (tabsession-switch "main")
+  (tabsession--select-tab (car (tabsession--tabs-in-session "main"))))
+
 (ert-deftest tabsession-test-new-session-preserves-existing-session ()
   (tabsession-test--with-reset
    (tabsession-mode 1)
@@ -306,6 +318,30 @@
    (should tab-bar-mode)
    (tabsession-mode 0)
    (should-not tab-bar-mode)))
+
+(ert-deftest tabsession-test-tab-next-stays-in-current-session ()
+  (tabsession-test--with-reset
+   (tabsession-test--interleaved-tabs)
+   (tab-next)
+   (should (equal (alist-get 'name (tab-bar--current-tab)) "main-2"))))
+
+(ert-deftest tabsession-test-tab-select-uses-current-session-order ()
+  (tabsession-test--with-reset
+   (tabsession-test--interleaved-tabs)
+   (tab-bar-select-tab 2)
+   (should (equal (alist-get 'name (tab-bar--current-tab)) "main-2"))))
+
+(ert-deftest tabsession-test-tab-move-stays-in-current-session ()
+  (tabsession-test--with-reset
+   (tabsession-test--interleaved-tabs)
+   (tabsession--select-tab (car (last (tabsession--tabs-in-session "main"))))
+   (tab-move -1)
+   (should (equal (mapcar (lambda (tab) (alist-get 'name tab))
+                          (tabsession--tabs-in-session "main"))
+                  '("main-2" "main-1")))
+   (should (equal (mapcar (lambda (tab) (alist-get 'name tab))
+                          (tabsession--tabs-in-session "work"))
+                  '("work-1")))))
 
 (ert-deftest tabsession-test-tab-bar-hides-inactive-session-entries ()
   (tabsession-test--with-reset
