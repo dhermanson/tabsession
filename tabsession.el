@@ -25,14 +25,6 @@
   "Default session name."
   :type 'string)
 
-(defcustom tabsession-show-inactive-groups-in-tab-bar nil
-  "Whether to show inactive session group labels in the tab bar.
-
-When non-nil, `tabsession-mode' uses `tab-bar-format-tabs-groups'
-so inactive session headers appear in the tab bar.  When nil, only the
-current session label and tabs are shown."
-  :type 'boolean)
-
 (defvar tabsession--saved-tab-bar-tab-group-function nil
   "Original value of `tab-bar-tab-group-function'
 before enabling `tabsession-mode'.")
@@ -205,9 +197,7 @@ before enabling `tabsession-mode'.")
   "Return FORMAT adjusted for `tabsession-mode'."
   (mapcar (lambda (item)
             (if (memq item '(tab-bar-format-tabs tab-bar-format-tabs-groups))
-                (if tabsession-show-inactive-groups-in-tab-bar
-                    'tab-bar-format-tabs-groups
-                  'tabsession--format-tabs)
+                'tabsession--format-tabs
               item))
           format))
 
