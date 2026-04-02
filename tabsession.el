@@ -501,21 +501,11 @@ Currently not bound to any prefix, ready for future keybindings.")
       (tabsession-switch session)
     (message "No session is bound to [%s]" (single-key-description key))))
 
-(defun tabsession--maybe-assign-hotkey (name)
-  "Offer to assign a hotkey for session NAME."
-  (when (y-or-n-p (format "Assign a hotkey to %s? " name))
-    (tabsession-assign-hotkey name (tabsession--read-available-hotkey name))))
-
-(defun tabsession-new (name &optional prompt-for-hotkey)
-  "Create new session NAME.
-
-When PROMPT-FOR-HOTKEY is non-nil, offer to assign a hotkey after
-creating the session."
-  (interactive (list (read-string "New session: ") t))
+(defun tabsession-new (name)
+  "Create new session NAME."
+  (interactive (list (read-string "New session: ")))
   (tab-bar-new-tab)
-  (tabsession--set name)
-  (when prompt-for-hotkey
-    (tabsession--maybe-assign-hotkey name)))
+  (tabsession--set name))
 
 (defun tabsession-rename (old-name new-name)
   "Rename session OLD-NAME to NEW-NAME."

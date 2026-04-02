@@ -233,19 +233,6 @@
    (should-error (tabsession-assign-hotkey "mail" ?a)
                  :type 'user-error)))
 
-(ert-deftest tabsession-test-new-session-offers-hotkey-assignment ()
-  (tabsession-test--with-reset
-   (tabsession-mode 1)
-   (cl-letf (((symbol-function 'read-string)
-              (lambda (&rest _) "focus"))
-             ((symbol-function 'y-or-n-p)
-              (lambda (_prompt) t))
-             ((symbol-function 'tabsession--read-available-hotkey)
-              (lambda (_name) ?x)))
-     (call-interactively #'tabsession-new)
-     (should (equal (tabsession--current) "focus"))
-     (should (equal (tabsession--hotkey-session ?x) "focus")))))
-
 (ert-deftest tabsession-test-read-bound-hotkey-errors-when-none-assigned ()
   (tabsession-test--with-reset
    (tabsession-mode 1)
