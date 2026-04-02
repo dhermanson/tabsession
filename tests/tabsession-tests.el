@@ -299,6 +299,14 @@
      (should (eq tab-bar-tab-group-function original-group-function))
      (should (eq tab-bar-show-inactive-group-tabs original-show-inactive)))))
 
+(ert-deftest tabsession-test-mode-enables-tab-bar-mode ()
+  (tabsession-test--with-reset
+   (tab-bar-mode 0)
+   (tabsession-mode 1)
+   (should tab-bar-mode)
+   (tabsession-mode 0)
+   (should-not tab-bar-mode)))
+
 (ert-deftest tabsession-test-tab-bar-hides-inactive-session-entries ()
   (tabsession-test--with-reset
    (setq tabsession-show-inactive-groups-in-tab-bar nil)

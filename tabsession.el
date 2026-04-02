@@ -37,6 +37,9 @@ current session label and tabs are shown."
   "Original value of `tab-bar-tab-group-function'
 before enabling `tabsession-mode'.")
 
+(defvar tabsession--saved-tab-bar-mode nil
+  "Original value of `tab-bar-mode' before enabling `tabsession-mode'.")
+
 (defvar tabsession--saved-tab-bar-format nil
   "Original value of `tab-bar-format' before enabling `tabsession-mode'.")
 
@@ -445,6 +448,8 @@ Currently not bound to any prefix, ready for future keybindings.")
   ;; :keymap tabsession-keymap
   (if tabsession-mode
       (progn
+        (setq tabsession--saved-tab-bar-mode tab-bar-mode)
+        (tab-bar-mode 1)
         (setq tabsession--saved-tab-bar-tab-group-function tab-bar-tab-group-function)
         (setq tabsession--saved-tab-bar-format tab-bar-format)
         (setq tabsession--saved-tab-bar-show-inactive-group-tabs
@@ -464,6 +469,9 @@ Currently not bound to any prefix, ready for future keybindings.")
     (setq tab-bar-format tabsession--saved-tab-bar-format)
     (setq tab-bar-show-inactive-group-tabs
           tabsession--saved-tab-bar-show-inactive-group-tabs)
+    (when (null tabsession--saved-tab-bar-mode)
+      (tab-bar-mode 0))
+    (setq tabsession--saved-tab-bar-mode nil)
     (setq tabsession--saved-tab-bar-tab-group-function nil)
     (setq tabsession--saved-tab-bar-format nil)
     (setq tabsession--saved-tab-bar-show-inactive-group-tabs nil)))
