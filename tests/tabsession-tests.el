@@ -379,6 +379,18 @@
    (tab-bar-select-tab 2)
    (should (equal (alist-get 'name (tab-bar--current-tab)) "main-2"))))
 
+(ert-deftest tabsession-test-tab-close-other-stays-in-current-session ()
+  (tabsession-test--with-reset
+   (tabsession-test--interleaved-tabs)
+   (tab-close-other)
+   (should (equal (mapcar (lambda (tab) (alist-get 'name tab))
+                          (tabsession--tabs-in-session "main"))
+                  '("main-1")))
+   (should (equal (mapcar (lambda (tab) (alist-get 'name tab))
+                          (tabsession--tabs-in-session "work"))
+                  '("work-1")))
+   (should (equal (tabsession--sessions) '("main" "work")))))
+
 (ert-deftest tabsession-test-tab-move-stays-in-current-session ()
   (tabsession-test--with-reset
    (tabsession-test--interleaved-tabs)
