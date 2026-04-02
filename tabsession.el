@@ -244,6 +244,12 @@ before enabling `tabsession-mode'.")
         #'>
         (tabsession--tabs-in-session name))))
 
+(defun tabsession--fallback-session (&optional excluded-name)
+  "Return a surviving session name, excluding EXCLUDED-NAME when possible."
+  (car (seq-remove (lambda (name)
+                     (equal name excluded-name))
+                   (tabsession--sorted-sessions))))
+
 (defun tabsession--sorted-sessions ()
   "Return session names sorted alphabetically."
   (sort (copy-sequence (tabsession--sessions)) #'string-lessp))
@@ -429,6 +435,32 @@ string shown in the prompt."
   (unless (alist-get 'group tab)
     (setf (alist-get 'group tab) tabsession-default-session)))
 
+(defun tabsession--cleanup-removed-sessions (before-sessions)
+  "Clear state for sessions in BEFORE-SESSIONS that no longer exist."
+  (dolist (name before-sessions)
+    (unless (member name (tabsession--sessions))
+      (tabsession--clear-session-hotkey name)
+      (when (equal tabsession--last-session name)
+        (setq tabsession--last-session nil)))))
+
+(defun tabsession--advice-close-tab (orig &rest args)
+  "Keep session state consistent around `tab-bar-close-tab' ORIG with ARGS."
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
+      (apply orig args)
+    (let* ((before-sessions (tabsession--sessions))
+           (current-session (tabsession--current))
+           (last-tab-in-session-p (= (length (tabsession--tabs-in-current-session)) 1))
+           (fallback-session (and last-tab-in-session-p
+                                  (tabsession--fallback-session current-session))))
+      (prog1
+          (apply orig args)
+        (tabsession--cleanup-removed-sessions before-sessions)
+        (when (and fallback-session
+                   (not (member current-session (tabsession--sessions)))
+                   (member fallback-session (tabsession--sessions)))
+          (tabsession-switch fallback-session))))))
+
 ;;; Sparse keymap (unbound, ready for future use)
 
 (defvar tabsession-keymap
@@ -587,6 +619,8 @@ Currently not bound to any prefix, ready for future keybindings.")
                     #'tabsession--advice-switch-to-prev-tab)
         (advice-add 'tab-bar-select-tab :around
                     #'tabsession--advice-select-tab)
+        (advice-add 'tab-bar-close-tab :around
+                    #'tabsession--advice-close-tab)
         (advice-add 'tab-move :around
                     #'tabsession--advice-move-tab)
         (advice-add 'tab-bar-move-tab :around
@@ -608,6 +642,8 @@ Currently not bound to any prefix, ready for future keybindings.")
                    #'tabsession--advice-switch-to-prev-tab)
     (advice-remove 'tab-bar-select-tab
                    #'tabsession--advice-select-tab)
+    (advice-remove 'tab-bar-close-tab
+                   #'tabsession--advice-close-tab)
     (advice-remove 'tab-move
                    #'tabsession--advice-move-tab)
     (advice-remove 'tab-bar-move-tab
