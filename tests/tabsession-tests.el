@@ -162,6 +162,23 @@
    (should (equal (tabsession--hotkey-session ?a) "work"))
    (should (equal (tabsession--session-hotkey "work") ?a))))
 
+(ert-deftest tabsession-test-session-completion-annotates-hotkeys ()
+  (tabsession-test--with-reset
+   (tabsession-mode 1)
+   (tabsession-new "work")
+   (tabsession-assign-hotkey "work" ?a)
+   (should (equal (tabsession--session-annotation "work") " [a]"))
+   (should (equal (tabsession--session-annotation "main") ""))
+   (cl-letf (((symbol-function 'completing-read)
+              (lambda (_prompt collection _predicate _require-match &rest _)
+                (should (equal collection '("main" "work")))
+                (should (equal (plist-get completion-extra-properties :category)
+                               'tabsession-session))
+                (should (eq (plist-get completion-extra-properties :annotation-function)
+                            'tabsession--session-annotation))
+                "work")))
+     (should (equal (tabsession-read) "work")))))
+
 (ert-deftest tabsession-test-hotkey-prompt-uses-grid-and-shows-assignments ()
   (tabsession-test--with-reset
    (tabsession-mode 1)

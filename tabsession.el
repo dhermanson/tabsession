@@ -447,9 +447,30 @@ Currently not bound to any prefix, ready for future keybindings.")
 
 ;;; Completing read candidates
 
-(defun tabsession-read ()
-  "Prompt for a session using `completing-read`."
-  (completing-read "Session: " (tabsession--sessions) nil t))
+(defun tabsession--session-annotation (candidate)
+  "Return completion annotation for session CANDIDATE."
+  (if-let* ((key (tabsession--session-hotkey candidate)))
+      (format " [%s]" (single-key-description key))
+    ""))
+
+(defun tabsession-read (&optional prompt)
+  "Prompt for a session using `completing-read` with PROMPT."
+  (let ((completion-extra-properties
+         '(:category tabsession-session
+           :annotation-function tabsession--session-annotation)))
+    (completing-read (or prompt "Session: ")
+                     (tabsession--sessions)
+                     nil t)))
+
+(with-eval-after-load 'marginalia
+  (defun marginalia-annotate-tabsession-session (candidate)
+    "Annotate tabsession CANDIDATE with its assigned hotkey."
+    (tabsession--session-annotation candidate))
+  (add-to-list 'marginalia-annotators
+               '(tabsession-session
+                 marginalia-annotate-tabsession-session
+                 builtin
+                 none)))
 
 (defun tabsession--read-switch-session ()
   "Read a session name for `tabsession-switch'."
