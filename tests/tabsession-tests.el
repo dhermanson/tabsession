@@ -201,7 +201,7 @@
    (tabsession-mode 1)
    (tabsession-new "work")
    (tabsession-assign-hotkey "work" ?a)
-   (let ((prompt (tabsession--bound-hotkey-prompt "Jump to session hotkey")))
+   (let ((prompt (tabsession--bound-hotkey-prompt "Jump to session:")))
      (should (string-match-p "\\[a\\].*work" prompt))
      (should-not (string-match-p "unbound" prompt)))))
 

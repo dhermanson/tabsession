@@ -364,7 +364,7 @@ Each item has the form (KEY SESSION LABEL)."
     (unless candidates
       (user-error "No session hotkeys are assigned"))
     (read-key (tabsession--bound-hotkey-prompt
-               (or title "Jump to session hotkey")))))
+               (or title "Jump to session:")))))
 
 (defun tabsession--read-available-hotkey (name)
   "Prompt until an available hotkey is chosen for NAME."
@@ -415,7 +415,7 @@ string shown in the prompt."
 (defun tabsession--quick-select-prompt ()
   "Return a formatted prompt for quick session selection."
   (tabsession--format-menu
-   "Select session"
+   "Select session:"
    (mapcar #'cl-third (tabsession--session-selector-candidates))))
 
 (defun tabsession--quick-select-session ()
@@ -545,9 +545,10 @@ name."
   (interactive (list (tabsession-read)))
   (unless (member name (tabsession--sessions))
     (user-error "No such session: %s" name))
-  (let ((tab (tabsession--preferred-tab name)))
-    (when tab
-      (tabsession--select-tab tab))))
+  (unless (equal name (tabsession--current))
+    (let ((tab (tabsession--preferred-tab name)))
+      (when tab
+        (tabsession--select-tab tab)))))
 
 (defun tabsession-switch (name)
   "Switch to session NAME."
@@ -579,7 +580,7 @@ name."
 
 (defun tabsession-jump-hotkey (key)
   "Jump to the session bound to hotkey KEY."
-  (interactive (list (tabsession-read-bound-hotkey "Jump to session hotkey")))
+  (interactive (list (tabsession-read-bound-hotkey "Jump to session:")))
   (if-let* ((session (tabsession--hotkey-session key)))
       (tabsession-switch session)
     (message "No session is bound to [%s]" (single-key-description key))))
