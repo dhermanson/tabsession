@@ -349,15 +349,26 @@
                             tab-bar-format-tabs
                             tab-bar-separator))
          (original-group-function #'tab-bar-tab-group-default)
-         (original-show-inactive t))
+         (original-show-inactive t)
+         (original-close-button-show t))
      (setq tab-bar-format original-format)
      (setq tab-bar-tab-group-function original-group-function)
      (setq tab-bar-show-inactive-group-tabs original-show-inactive)
+     (setq tab-bar-close-button-show original-close-button-show)
      (tabsession-mode 1)
      (tabsession-mode 0)
      (should (equal tab-bar-format original-format))
      (should (eq tab-bar-tab-group-function original-group-function))
-     (should (eq tab-bar-show-inactive-group-tabs original-show-inactive)))))
+     (should (eq tab-bar-show-inactive-group-tabs original-show-inactive))
+     (should (eq tab-bar-close-button-show original-close-button-show)))))
+
+(ert-deftest tabsession-test-mode-hides-tab-close-button ()
+  (tabsession-test--with-reset
+   (setq tab-bar-close-button-show t)
+   (tabsession-mode 1)
+   (should-not tab-bar-close-button-show)
+   (tabsession-mode 0)
+   (should tab-bar-close-button-show)))
 
 (ert-deftest tabsession-test-mode-enables-tab-bar-mode ()
   (tabsession-test--with-reset
@@ -427,7 +438,9 @@
    (let ((labels
           (mapcar #'caddr (tabsession--format-tabs))))
      (should (member "main" labels))
-     (should (member "*scratch* x" labels))
+     (should (seq-some (lambda (label)
+                         (string-match-p "\\*scratch\\*" label))
+                       labels))
      (should-not (member "work" labels)))))
 
 (ert-deftest tabsession-test-mode-survives-dired-buffer-switch ()

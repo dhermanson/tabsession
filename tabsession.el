@@ -26,6 +26,10 @@
   "Default session name."
   :type 'string)
 
+(defcustom tabsession-tab-label-padding " "
+  "Horizontal padding added around each visible tab label."
+  :type 'string)
+
 (defvar tabsession--saved-tab-bar-tab-group-function nil
   "Original value of `tab-bar-tab-group-function'
 before enabling `tabsession-mode'.")
@@ -38,6 +42,9 @@ before enabling `tabsession-mode'.")
 
 (defvar tabsession--saved-tab-bar-show-inactive-group-tabs nil
   "Original value of `tab-bar-show-inactive-group-tabs' before enabling mode.")
+
+(defvar tabsession--saved-tab-bar-close-button-show nil
+  "Original value of `tab-bar-close-button-show' before enabling mode.")
 
 (defconst tabsession--selector-key-preference
   (string-to-list "asdfjkl;ghwertyuiopcvbnmzqx1234567890")
@@ -196,11 +203,24 @@ before enabling `tabsession-mode'.")
 
 (defun tabsession--tab-bar-format (format)
   "Return FORMAT adjusted for `tabsession-mode'."
-  (mapcar (lambda (item)
-            (if (memq item '(tab-bar-format-tabs tab-bar-format-tabs-groups))
-                'tabsession--format-tabs
-              item))
-          format))
+  (seq-remove
+   (lambda (item)
+     (eq item 'tab-bar-format-add-tab))
+   (mapcar (lambda (item)
+             (if (memq item '(tab-bar-format-tabs tab-bar-format-tabs-groups))
+                 'tabsession--format-tabs
+               item))
+           format)))
+
+(defun tabsession--pad-tab (tab)
+  "Return TAB with padding applied to its displayed name."
+  (let ((tab (copy-tree tab)))
+    (when-let* ((name (alist-get 'name tab)))
+      (setf (alist-get 'name tab)
+            (concat tabsession-tab-label-padding
+                    name
+                    tabsession-tab-label-padding)))
+    tab))
 
 (defun tabsession--format-tabs ()
   "Produce tab-bar items for the current session only."
@@ -221,7 +241,7 @@ before enabling `tabsession-mode'.")
       (lambda (tab)
         (setq i (1+ i))
         (let ((tab-bar-tab-face-function tab-bar-tab-group-face-function))
-          (tab-bar--format-tab tab i)))
+          (tab-bar--format-tab (tabsession--pad-tab tab) i)))
       visible-tabs))))
 
 (defun tabsession--sessions ()
@@ -635,10 +655,13 @@ name."
         (setq tabsession--saved-tab-bar-format tab-bar-format)
         (setq tabsession--saved-tab-bar-show-inactive-group-tabs
               tab-bar-show-inactive-group-tabs)
+        (setq tabsession--saved-tab-bar-close-button-show
+              tab-bar-close-button-show)
         (setq tab-bar-tab-group-function #'tabsession--tab-group)
         (setq tab-bar-format
               (tabsession--tab-bar-format tab-bar-format))
         (setq tab-bar-show-inactive-group-tabs nil)
+        (setq tab-bar-close-button-show nil)
         (advice-add 'tab-next :around
                     #'tabsession--advice-switch-to-next-tab)
         (advice-add 'tab-bar-switch-to-next-tab :around
@@ -690,12 +713,15 @@ name."
     (setq tab-bar-format tabsession--saved-tab-bar-format)
     (setq tab-bar-show-inactive-group-tabs
           tabsession--saved-tab-bar-show-inactive-group-tabs)
+    (setq tab-bar-close-button-show
+          tabsession--saved-tab-bar-close-button-show)
     (when (null tabsession--saved-tab-bar-mode)
       (tab-bar-mode 0))
     (setq tabsession--saved-tab-bar-mode nil)
     (setq tabsession--saved-tab-bar-tab-group-function nil)
     (setq tabsession--saved-tab-bar-format nil)
-    (setq tabsession--saved-tab-bar-show-inactive-group-tabs nil)))
+    (setq tabsession--saved-tab-bar-show-inactive-group-tabs nil)
+    (setq tabsession--saved-tab-bar-close-button-show nil)))
 
 ;;; Startup safety
 
