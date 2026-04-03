@@ -30,6 +30,12 @@
   "Horizontal padding added around each visible tab label."
   :type 'string)
 
+(defcustom tabsession-tab-bar-auto-width nil
+  "Whether `tabsession-mode' should keep `tab-bar-auto-width' enabled.
+When nil, tab widths follow the displayed label width instead of being
+stretched across the entire tab bar."
+  :type 'boolean)
+
 (defvar tabsession--saved-tab-bar-tab-group-function nil
   "Original value of `tab-bar-tab-group-function'
 before enabling `tabsession-mode'.")
@@ -45,6 +51,9 @@ before enabling `tabsession-mode'.")
 
 (defvar tabsession--saved-tab-bar-close-button-show nil
   "Original value of `tab-bar-close-button-show' before enabling mode.")
+
+(defvar tabsession--saved-tab-bar-auto-width nil
+  "Original value of `tab-bar-auto-width' before enabling mode.")
 
 (defconst tabsession--selector-key-preference
   (string-to-list "asdfjkl;ghwertyuiopcvbnmzqx1234567890")
@@ -657,11 +666,14 @@ name."
               tab-bar-show-inactive-group-tabs)
         (setq tabsession--saved-tab-bar-close-button-show
               tab-bar-close-button-show)
+        (setq tabsession--saved-tab-bar-auto-width
+              tab-bar-auto-width)
         (setq tab-bar-tab-group-function #'tabsession--tab-group)
         (setq tab-bar-format
               (tabsession--tab-bar-format tab-bar-format))
         (setq tab-bar-show-inactive-group-tabs nil)
         (setq tab-bar-close-button-show nil)
+        (setq tab-bar-auto-width tabsession-tab-bar-auto-width)
         (advice-add 'tab-next :around
                     #'tabsession--advice-switch-to-next-tab)
         (advice-add 'tab-bar-switch-to-next-tab :around
@@ -715,13 +727,16 @@ name."
           tabsession--saved-tab-bar-show-inactive-group-tabs)
     (setq tab-bar-close-button-show
           tabsession--saved-tab-bar-close-button-show)
+    (setq tab-bar-auto-width
+          tabsession--saved-tab-bar-auto-width)
     (when (null tabsession--saved-tab-bar-mode)
       (tab-bar-mode 0))
     (setq tabsession--saved-tab-bar-mode nil)
     (setq tabsession--saved-tab-bar-tab-group-function nil)
     (setq tabsession--saved-tab-bar-format nil)
     (setq tabsession--saved-tab-bar-show-inactive-group-tabs nil)
-    (setq tabsession--saved-tab-bar-close-button-show nil)))
+    (setq tabsession--saved-tab-bar-close-button-show nil)
+    (setq tabsession--saved-tab-bar-auto-width nil)))
 
 ;;; Startup safety
 

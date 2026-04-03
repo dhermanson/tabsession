@@ -47,6 +47,10 @@ If you use `use-package`, configure it like this:
 `tabsession-mode` shows the current session label in the tab bar while keeping
 inactive session headers and tabs hidden.
 
+By default, `tabsession-mode` disables Emacs' `tab-bar-auto-width`, so each tab
+can shrink to its label width instead of stretching across the tab bar. Set
+`tabsession-tab-bar-auto-width` to non-nil if you prefer the built-in resizing.
+
 `tabsession-jump-hotkey` uses the same styled `read-key` menu as session
 switching and shows any assigned hotkeys directly in the prompt.
 
