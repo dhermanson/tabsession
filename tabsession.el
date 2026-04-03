@@ -30,6 +30,10 @@
   "Horizontal padding added around each visible tab label."
   :type 'string)
 
+(defcustom tabsession-tab-group-label-padding " "
+  "Horizontal padding added around the visible session label."
+  :type 'string)
+
 (defcustom tabsession-tab-bar-auto-width nil
   "Whether `tabsession-mode' should keep `tab-bar-auto-width' enabled.
 When nil, tab widths follow the displayed label width instead of being
@@ -226,10 +230,29 @@ before enabling `tabsession-mode'.")
   (let ((tab (copy-tree tab)))
     (when-let* ((name (alist-get 'name tab)))
       (setf (alist-get 'name tab)
-            (concat tabsession-tab-label-padding
-                    name
-                    tabsession-tab-label-padding)))
+            (tabsession--pad-label name tabsession-tab-label-padding)))
     tab))
+
+(defun tabsession--pad-label (label padding)
+  "Return LABEL with PADDING added to both sides."
+  (concat padding label padding))
+
+(defun tabsession--format-current-tab-group (tab)
+  "Format TAB's current session label with tabsession padding."
+  (let ((items (tab-bar--format-tab-group tab 1 t)))
+    (mapcar
+     (lambda (item)
+       (if (and (eq (nth 1 item) 'menu-item)
+                (stringp (nth 2 item))
+                (eq (car item) 'current-group))
+           (let ((item (copy-sequence item)))
+             (setf (nth 2 item)
+                   (tabsession--pad-label
+                    (nth 2 item)
+                    tabsession-tab-group-label-padding))
+             item)
+         item))
+     items)))
 
 (defun tabsession--format-tabs ()
   "Produce tab-bar items for the current session only."
@@ -245,7 +268,7 @@ before enabling `tabsession-mode'.")
          (i 0))
     (append
      (when (and current-tab current-group)
-       (tab-bar--format-tab-group current-tab 1 t))
+       (tabsession--format-current-tab-group current-tab))
      (mapcan
       (lambda (tab)
         (setq i (1+ i))

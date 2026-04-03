@@ -51,6 +51,9 @@ By default, `tabsession-mode` disables Emacs' `tab-bar-auto-width`, so each tab
 can shrink to its label width instead of stretching across the tab bar. Set
 `tabsession-tab-bar-auto-width` to non-nil if you prefer the built-in resizing.
 
+Use `tabsession-tab-label-padding` and `tabsession-tab-group-label-padding` to
+control the horizontal buffer around tab names and the current session label.
+
 `tabsession-jump-hotkey` uses the same styled `read-key` menu as session
 switching and shows any assigned hotkeys directly in the prompt.
 

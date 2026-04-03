@@ -26,6 +26,7 @@
   (setq tab-bar-show-inactive-group-tabs t)
   (setq tab-bar-tab-group-function #'tab-bar-tab-group-default)
   (setq global-mode-string nil)
+  (setq tabsession-tab-group-label-padding " ")
   (setq tabsession-session-hotkeys nil)
   (setq tabsession--last-session nil))
 
@@ -441,11 +442,21 @@
    (tabsession-switch "main")
    (let ((labels
           (mapcar #'caddr (tabsession--format-tabs))))
-     (should (member "main" labels))
+     (should (seq-some (lambda (label)
+                         (string-match-p "main" label))
+                       labels))
      (should (seq-some (lambda (label)
                          (string-match-p "\\*scratch\\*" label))
                        labels))
      (should-not (member "work" labels)))))
+
+(ert-deftest tabsession-test-current-session-label-uses-padding ()
+  (tabsession-test--with-reset
+   (setq tabsession-tab-group-label-padding "  ")
+   (tabsession-mode 1)
+   (let ((labels
+          (mapcar #'caddr (tabsession--format-tabs))))
+     (should (member "  main  " labels)))))
 
 (ert-deftest tabsession-test-mode-survives-dired-buffer-switch ()
   (tabsession-test--with-reset
