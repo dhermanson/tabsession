@@ -140,6 +140,12 @@ before enabling `pivot-mode'.")
        (pivot--tab-group tab))
       (pivot--call-unscoped #'tab-bar-select-tab (1+ index)))))
 
+(defun pivot--reselect-session (name)
+  "Select a surviving tab in session NAME without recording a transition."
+  (when-let* ((tab (pivot--preferred-tab name))
+              (index (seq-position (pivot--all-tabs) tab #'eq)))
+    (pivot--call-unscoped #'tab-bar-select-tab (1+ index))))
+
 (defun pivot--switch-tab-in-current-session (arg)
   "Switch ARG tabs within the current session."
   (let* ((tabs (pivot--tabs-in-current-session))
@@ -511,10 +517,13 @@ string shown in the prompt."
           ;; session-scoped advice for that internal selection.
           (apply #'pivot--call-unscoped orig args)
         (pivot--cleanup-removed-sessions before-sessions)
-        (when (and fallback-session
-                   (not (member current-session (pivot--sessions)))
-                   (member fallback-session (pivot--sessions)))
-          (pivot-switch fallback-session))))))
+        (cond
+         ((member current-session (pivot--sessions))
+          (unless (equal current-session (pivot--current))
+            (pivot--reselect-session current-session)))
+         ((and fallback-session
+               (member fallback-session (pivot--sessions)))
+          (pivot-switch fallback-session)))))))
 
 (defun pivot--advice-close-other-tabs (orig &optional tab-number)
   "Restrict `tab-bar-close-other-tabs' ORIG to the current session."
