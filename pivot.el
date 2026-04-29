@@ -63,16 +63,42 @@ before enabling `pivot-mode'.")
   (string-to-list "asdfjkl;ghwertyuiopcvbnmzqx1234567890")
   "Preferred key order for quick session selection on a QWERTY layout.")
 
-(defvar pivot-session-hotkeys nil
-  "Alist mapping hotkey characters to session names.")
-
-(defvar pivot--last-session nil
-  "Previously active session name.")
-
 (defvar pivot--inhibit-command-scoping nil
   "When non-nil, bypass session-scoped tab-bar command advice.")
 
+(defconst pivot--frame-hotkeys-parameter 'pivot-session-hotkeys
+  "Frame parameter storing session hotkeys for that frame.")
+
+(defconst pivot--frame-last-session-parameter 'pivot-last-session
+  "Frame parameter storing the previous session for that frame.")
+
 ;;; Core helpers
+
+(defun pivot--state-frame (&optional frame)
+  "Return FRAME or the selected frame."
+  (or frame (selected-frame)))
+
+(defun pivot--frame-hotkeys (&optional frame)
+  "Return session hotkeys for FRAME."
+  (frame-parameter (pivot--state-frame frame)
+                   pivot--frame-hotkeys-parameter))
+
+(defun pivot--set-frame-hotkeys (value &optional frame)
+  "Set session hotkeys for FRAME to VALUE."
+  (let ((frame (pivot--state-frame frame)))
+    (set-frame-parameter frame pivot--frame-hotkeys-parameter value)
+    value))
+
+(defun pivot--frame-last-session (&optional frame)
+  "Return the previous session for FRAME."
+  (frame-parameter (pivot--state-frame frame)
+                   pivot--frame-last-session-parameter))
+
+(defun pivot--set-frame-last-session (value &optional frame)
+  "Set the previous session for FRAME to VALUE."
+  (let ((frame (pivot--state-frame frame)))
+    (set-frame-parameter frame pivot--frame-last-session-parameter value)
+    value))
 
 (defun pivot--tab-group (tab)
   "Return the session group for TAB."
@@ -83,10 +109,10 @@ before enabling `pivot-mode'.")
   "Return the current session name."
   (pivot--tab-group (tab-bar--current-tab)))
 
-(defun pivot--record-session-transition (from to)
-  "Record a session transition from FROM to TO."
+(defun pivot--record-session-transition (from to &optional frame)
+  "Record a session transition from FROM to TO on FRAME."
   (when (and from to (not (equal from to)))
-    (setq pivot--last-session from)))
+    (pivot--set-frame-last-session from frame)))
 
 (defun pivot--all-tabs (&optional frame)
   "Return the complete tab list for FRAME."
@@ -336,18 +362,18 @@ ENTRIES should already include any text properties to render."
 
 (defun pivot--session-hotkey (name)
   "Return the hotkey assigned to session NAME, or nil."
-  (car (rassoc name pivot-session-hotkeys)))
+  (car (rassoc name (pivot--frame-hotkeys))))
 
 (defun pivot--hotkey-session (key)
   "Return the session assigned to hotkey KEY, or nil."
-  (alist-get key pivot-session-hotkeys))
+  (alist-get key (pivot--frame-hotkeys)))
 
 (defun pivot--clear-session-hotkey (name)
   "Remove any hotkey bound to session NAME."
-  (setq pivot-session-hotkeys
-        (cl-remove name pivot-session-hotkeys
-                   :key #'cdr
-                   :test #'equal)))
+  (pivot--set-frame-hotkeys
+   (cl-remove name (pivot--frame-hotkeys)
+              :key #'cdr
+              :test #'equal)))
 
 (defun pivot--assign-hotkey (key name)
   "Assign hotkey KEY to session NAME."
@@ -358,19 +384,23 @@ ENTRIES should already include any text properties to render."
                   (single-key-description key)
                   existing)))
   (pivot--clear-session-hotkey name)
-  (setf (alist-get key pivot-session-hotkeys) name)
+  (let ((hotkeys (copy-tree (pivot--frame-hotkeys))))
+    (setf (alist-get key hotkeys) name)
+    (pivot--set-frame-hotkeys hotkeys))
   key)
 
 (defun pivot--rename-hotkey-session (old-name new-name)
   "Update hotkey bindings from OLD-NAME to NEW-NAME."
   (let ((key (pivot--session-hotkey old-name)))
     (when key
-      (setf (alist-get key pivot-session-hotkeys) new-name))))
+      (let ((hotkeys (copy-tree (pivot--frame-hotkeys))))
+        (setf (alist-get key hotkeys) new-name)
+        (pivot--set-frame-hotkeys hotkeys)))))
 
 (defun pivot--rename-last-session (old-name new-name)
   "Update last-session tracking from OLD-NAME to NEW-NAME."
-  (when (equal pivot--last-session old-name)
-    (setq pivot--last-session new-name)))
+  (when (equal (pivot--frame-last-session) old-name)
+    (pivot--set-frame-last-session new-name)))
 
 (defun pivot--hotkey-candidates ()
   "Return bound hotkey candidates sorted alphabetically by key label.
@@ -388,7 +418,7 @@ Each item has the form (KEY SESSION LABEL)."
               " "
               (propertize session
                           'face 'pivot-quick-select-session)))))
-   (sort (copy-sequence pivot-session-hotkeys)
+   (sort (copy-sequence (pivot--frame-hotkeys))
          (lambda (left right)
            (string-lessp (single-key-description (car left))
                          (single-key-description (car right)))))))
@@ -498,8 +528,8 @@ string shown in the prompt."
   (dolist (name before-sessions)
     (unless (member name (pivot--sessions))
       (pivot--clear-session-hotkey name)
-      (when (equal pivot--last-session name)
-        (setq pivot--last-session nil)))))
+      (when (equal (pivot--frame-last-session) name)
+        (pivot--set-frame-last-session nil)))))
 
 (defun pivot--advice-close-tab (orig &rest args)
   "Keep session state consistent around `tab-bar-close-tab' ORIG with ARGS."
@@ -624,11 +654,12 @@ name."
 (defun pivot-switch-last ()
   "Switch to the previously active session."
   (interactive)
-  (unless pivot--last-session
-    (user-error "No previous session"))
-  (unless (member pivot--last-session (pivot--sessions))
-    (user-error "Previous session no longer exists"))
-  (pivot-switch pivot--last-session))
+  (let ((last-session (pivot--frame-last-session)))
+    (unless last-session
+      (user-error "No previous session"))
+    (unless (member last-session (pivot--sessions))
+      (user-error "Previous session no longer exists"))
+    (pivot-switch last-session)))
 
 (defun pivot-assign-hotkey (name key)
   "Assign hotkey KEY to session NAME."
@@ -677,8 +708,8 @@ name."
   (when (= (length (pivot--sessions)) 1)
     (user-error "Cannot kill the last session"))
   (pivot--clear-session-hotkey name)
-  (when (equal pivot--last-session name)
-    (setq pivot--last-session nil))
+  (when (equal (pivot--frame-last-session) name)
+    (pivot--set-frame-last-session nil))
   (dolist (tab (pivot--tabs-in-session name))
     (tab-bar-close-tab (1+ (seq-position (pivot--all-tabs) tab #'eq)))))
 
@@ -729,6 +760,8 @@ name."
         (add-hook 'tab-bar-tab-post-open-functions
                   #'pivot--handle-tab-open)
         ;; Ensure startup tab has a session
+        (pivot--set-frame-hotkeys nil)
+        (pivot--set-frame-last-session nil)
         (pivot--ensure-current-session))
     ;; Disable
     (advice-remove 'tab-next
@@ -768,7 +801,9 @@ name."
     (setq pivot--saved-tab-bar-format nil)
     (setq pivot--saved-tab-bar-show-inactive-group-tabs nil)
     (setq pivot--saved-tab-bar-close-button-show nil)
-    (setq pivot--saved-tab-bar-auto-width nil)))
+    (setq pivot--saved-tab-bar-auto-width nil)
+    (pivot--set-frame-hotkeys nil)
+    (pivot--set-frame-last-session nil)))
 
 ;;; Startup safety
 
