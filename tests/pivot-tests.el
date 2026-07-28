@@ -27,8 +27,8 @@
   (setq tab-bar-tab-group-function #'tab-bar-tab-group-default)
   (setq global-mode-string nil)
   (setq pivot-tab-group-label-padding " ")
-  (setq pivot-session-hotkeys nil)
-  (setq pivot--last-session nil))
+  (set-frame-parameter nil 'pivot-session-hotkeys nil)
+  (set-frame-parameter nil 'pivot-last-session nil))
 
 (defmacro pivot-test--with-reset (&rest body)
   "Run BODY after resetting tab-bar and pivot state."
@@ -265,7 +265,7 @@
    (pivot-switch "work")
    (pivot-switch-last)
    (should (equal (pivot--current) "main"))
-   (should (equal pivot--last-session "work"))))
+   (should (equal (pivot--frame-last-session) "work"))))
 
 (ert-deftest pivot-test-switch-last-toggles-between-two-sessions ()
   (pivot-test--with-reset
@@ -276,7 +276,7 @@
    (pivot-switch-last)
    (pivot-switch-last)
    (should (equal (pivot--current) "work"))
-   (should (equal pivot--last-session "main"))))
+   (should (equal (pivot--frame-last-session) "main"))))
 
 (ert-deftest pivot-test-switch-last-errors-without-previous-session ()
   (pivot-test--with-reset
@@ -310,7 +310,7 @@
    (pivot-switch "main")
    (pivot-switch "work")
    (pivot-kill "main")
-   (should-not pivot--last-session)
+   (should-not (pivot--frame-last-session))
    (should-error (pivot-switch-last)
                  :type 'user-error)))
 

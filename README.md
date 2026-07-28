@@ -82,3 +82,7 @@ Run the ERT test suite in batch mode from the repository root:
 ```sh
 emacs -Q --batch -L . -L tests -l tests/pivot-tests.el -f ert-run-tests-batch-and-exit
 ```
+
+## Ideas
+
+- [ ] add the ability to move a tab to a different session
