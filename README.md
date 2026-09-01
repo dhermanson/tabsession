@@ -75,6 +75,26 @@ switching and shows any assigned hotkeys directly in the prompt.
 If you use Marginalia, activity completion also shows any assigned hotkey as an
 annotation. Marginalia is optional and not required for `pivot`.
 
+## Integration API
+
+Use `(pivot-current)` to get the current activity name. It accepts an optional
+frame argument for integrations that manage frame-local state.
+
+Pivot also exposes three abnormal hooks for integrations that need to follow
+the activity lifecycle:
+
+- `pivot-session-switch-functions` receives the old name, new name, and frame
+- `pivot-session-renamed-functions` receives the old name, new name, and frame
+- `pivot-session-killed-functions` receives the removed name and frame
+
+The optional Treemacs adapter scopes one Treemacs buffer and workspace to each
+frame-local Pivot activity:
+
+```elisp
+(require 'pivot-treemacs)
+(treemacs-set-scope-type 'Pivot)
+```
+
 ## Testing
 
 Run the ERT test suite in batch mode from the repository root:

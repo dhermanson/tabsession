@@ -66,6 +66,24 @@ before enabling `pivot-mode'.")
 (defvar pivot--inhibit-command-scoping nil
   "When non-nil, bypass session-scoped tab-bar command advice.")
 
+(defvar pivot--inhibit-session-switch-notification nil
+  "When non-nil, suppress session-switch state updates and notifications.")
+
+(defvar pivot-session-switch-functions nil
+  "Functions called after the current session changes.
+Each function receives the previous session name, the new session name, and
+the frame where the change occurred.")
+
+(defvar pivot-session-renamed-functions nil
+  "Functions called after a session is renamed.
+Each function receives the old session name, the new session name, and the
+frame where the rename occurred.")
+
+(defvar pivot-session-killed-functions nil
+  "Functions called after a session's final tab is closed.
+Each function receives the removed session name and the frame where it was
+removed.")
+
 (defconst pivot--frame-hotkeys-parameter 'pivot-session-hotkeys
   "Frame parameter storing session hotkeys for that frame.")
 
@@ -105,14 +123,30 @@ before enabling `pivot-mode'.")
   (or (alist-get 'group tab)
       pivot-default-session))
 
+(defun pivot-current (&optional frame)
+  "Return the current session name on FRAME.
+FRAME defaults to the selected frame."
+  (pivot--tab-group (tab-bar--current-tab nil frame)))
+
 (defun pivot--current ()
-  "Return the current session name."
-  (pivot--tab-group (tab-bar--current-tab)))
+  "Return the current session name.
+This internal compatibility wrapper delegates to `pivot-current'."
+  (pivot-current))
 
 (defun pivot--record-session-transition (from to &optional frame)
   "Record a session transition from FROM to TO on FRAME."
   (when (and from to (not (equal from to)))
     (pivot--set-frame-last-session from frame)))
+
+(defun pivot--notify-session-switch (from &optional frame)
+  "Record and announce a session change from FROM on FRAME."
+  (unless pivot--inhibit-session-switch-notification
+    (let* ((frame (pivot--state-frame frame))
+           (to (pivot-current frame)))
+      (when (and from to (not (equal from to)))
+        (pivot--record-session-transition from to frame)
+        (run-hook-with-args 'pivot-session-switch-functions
+                            from to frame)))))
 
 (defun pivot--all-tabs (&optional frame)
   "Return the complete tab list for FRAME."
@@ -157,14 +191,13 @@ before enabling `pivot-mode'.")
 
 (defun pivot--select-tab (tab)
   "Select TAB from the complete tab list."
-  (let* ((current-session (pivot--current))
+  (let* ((frame (selected-frame))
+         (current-session (pivot-current frame))
          (tabs (pivot--all-tabs))
          (index (seq-position tabs tab #'eq)))
     (when index
-      (pivot--record-session-transition
-       current-session
-       (pivot--tab-group tab))
-      (pivot--call-unscoped #'tab-bar-select-tab (1+ index)))))
+      (pivot--call-unscoped #'tab-bar-select-tab (1+ index))
+      (pivot--notify-session-switch current-session frame))))
 
 (defun pivot--reselect-session (name)
   "Select a surviving tab in session NAME without recording a transition."
@@ -470,11 +503,13 @@ Each item has the form (KEY SESSION LABEL)."
 
 (defun pivot--rename-session-tabs (old-name new-name)
   "Rename OLD-NAME session tabs to NEW-NAME."
-  (let ((current-tab (tab-bar--current-tab)))
+  (let ((current-index (tab-bar--current-tab-index (pivot--all-tabs)))
+        (pivot--inhibit-session-switch-notification t))
     (dolist (tab (pivot--tabs-in-session old-name))
       (pivot--select-tab tab)
       (tab-bar-change-tab-group new-name))
-    (pivot--select-tab current-tab)))
+    (when current-index
+      (pivot--call-unscoped #'tab-bar-select-tab (1+ current-index)))))
 
 (defun pivot--session-selector-candidates ()
   "Return session candidates with single-key selectors.
@@ -523,13 +558,15 @@ string shown in the prompt."
   (unless (alist-get 'group tab)
     (setf (alist-get 'group tab) pivot-default-session)))
 
-(defun pivot--cleanup-removed-sessions (before-sessions)
-  "Clear state for sessions in BEFORE-SESSIONS that no longer exist."
+(defun pivot--cleanup-removed-sessions (before-sessions &optional frame)
+  "Clear removed sessions from BEFORE-SESSIONS on FRAME and announce them."
+  (setq frame (pivot--state-frame frame))
   (dolist (name before-sessions)
     (unless (member name (pivot--sessions))
       (pivot--clear-session-hotkey name)
       (when (equal (pivot--frame-last-session) name)
-        (pivot--set-frame-last-session nil)))))
+        (pivot--set-frame-last-session nil))
+      (run-hook-with-args 'pivot-session-killed-functions name frame))))
 
 (defun pivot--advice-close-tab (orig &rest args)
   "Keep session state consistent around `tab-bar-close-tab' ORIG with ARGS."
@@ -553,7 +590,9 @@ string shown in the prompt."
             (pivot--reselect-session current-session)))
          ((and fallback-session
                (member fallback-session (pivot--sessions)))
-          (pivot-switch fallback-session)))))))
+          (if (equal fallback-session (pivot-current))
+              (pivot--notify-session-switch current-session)
+            (pivot-switch fallback-session))))))))
 
 (defun pivot--advice-close-other-tabs (orig &optional tab-number)
   "Restrict `tab-bar-close-other-tabs' ORIG to the current session."
@@ -680,8 +719,11 @@ name."
 (defun pivot-new (name)
   "Create new session NAME."
   (interactive (list (read-string "New session: ")))
-  (tab-bar-new-tab)
-  (pivot--set name))
+  (let ((frame (selected-frame))
+        (current-session (pivot-current)))
+    (tab-bar-new-tab)
+    (pivot--set name)
+    (pivot--notify-session-switch current-session frame)))
 
 (defun pivot-rename (old-name new-name)
   "Rename session OLD-NAME to NEW-NAME."
@@ -700,7 +742,9 @@ name."
   (unless (equal old-name new-name)
     (pivot--rename-session-tabs old-name new-name)
     (pivot--rename-hotkey-session old-name new-name)
-    (pivot--rename-last-session old-name new-name)))
+    (pivot--rename-last-session old-name new-name)
+    (run-hook-with-args 'pivot-session-renamed-functions
+                        old-name new-name (selected-frame))))
 
 (defun pivot-kill (name)
   "Kill session NAME."

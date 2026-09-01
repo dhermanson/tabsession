@@ -58,6 +58,28 @@
                   '("main" "work")))
    (should (equal (pivot--current) "work"))))
 
+(ert-deftest pivot-test-current-returns-public-session-identity ()
+  (pivot-test--with-reset
+   (pivot-mode 1)
+   (should (equal (pivot-current) "main"))
+   (pivot-new "work")
+   (should (equal (pivot-current) "work"))
+   (should (equal (pivot-current (selected-frame)) "work"))))
+
+(ert-deftest pivot-test-session-switch-functions-receive-transition ()
+  (pivot-test--with-reset
+   (pivot-mode 1)
+   (let* ((events nil)
+          (frame (selected-frame))
+          (pivot-session-switch-functions
+           (list (lambda (from to event-frame)
+                   (push (list from to event-frame) events)))))
+     (pivot-new "work")
+     (pivot-switch "main")
+     (should (equal (nreverse events)
+                    `(("main" "work" ,frame)
+                      ("work" "main" ,frame)))))))
+
 (ert-deftest pivot-test-switch-can-reach-hidden-session ()
   (pivot-test--with-reset
    (pivot-mode 1)
@@ -325,6 +347,42 @@
    (should-not (pivot--session-hotkey "work"))
    (pivot-jump-hotkey ?a)
    (should (equal (pivot--current) "deep-work"))))
+
+(ert-deftest pivot-test-session-renamed-functions-receive-rename ()
+  (pivot-test--with-reset
+   (pivot-mode 1)
+   (pivot-new "work")
+   (let* ((events nil)
+          (frame (selected-frame))
+          (pivot-session-renamed-functions
+           (list (lambda (old-name new-name event-frame)
+                   (push (list old-name new-name event-frame) events)))))
+     (pivot-rename "work" "deep-work")
+     (should (equal events `(("work" "deep-work" ,frame)))))))
+
+(ert-deftest pivot-test-session-killed-functions-receive-removal ()
+  (pivot-test--with-reset
+   (pivot-mode 1)
+   (pivot-new "work")
+   (let* ((events nil)
+          (frame (selected-frame))
+          (pivot-session-killed-functions
+           (list (lambda (name event-frame)
+                   (push (list name event-frame) events)))))
+     (pivot-kill "work")
+     (should (equal events `(("work" ,frame)))))))
+
+(ert-deftest pivot-test-killing-current-session-announces-fallback-switch ()
+  (pivot-test--with-reset
+   (pivot-mode 1)
+   (pivot-new "work")
+   (let* ((events nil)
+          (frame (selected-frame))
+          (pivot-session-switch-functions
+           (list (lambda (from to event-frame)
+                   (push (list from to event-frame) events)))))
+     (pivot-kill "work")
+     (should (equal events `(("work" "main" ,frame)))))))
 
 (ert-deftest pivot-test-switch-completing-uses-completion ()
   (pivot-test--with-reset
