@@ -1,4 +1,4 @@
-;;; pivot.el --- pivot between activities with tab-bar groups -*- lexical-binding: t; -*-
+;;; tabsession.el --- pivot between activities with tab-bar groups -*- lexical-binding: t; -*-
 ;; Package-Requires: ((emacs "31.0"))
 
 (require 'cl-lib)
@@ -8,269 +8,269 @@
 
 ;;; Customization
 
-(defgroup pivot nil
+(defgroup tabsession nil
   "Session management using tab-bar groups."
   :group 'convenience)
 
-(defface pivot-quick-select-key
+(defface tabsession-quick-select-key
   '((t :inherit font-lock-keyword-face :weight bold))
   "Face used for keys in the quick session selector."
-  :group 'pivot)
+  :group 'tabsession)
 
-(defface pivot-quick-select-session
+(defface tabsession-quick-select-session
   '((t :inherit default))
   "Face used for session names in the quick session selector."
-  :group 'pivot)
+  :group 'tabsession)
 
-(defcustom pivot-default-session "main"
+(defcustom tabsession-default-session "main"
   "Default session name."
   :type 'string)
 
-(defcustom pivot-tab-label-padding " "
+(defcustom tabsession-tab-label-padding " "
   "Horizontal padding added around each visible tab label."
   :type 'string)
 
-(defcustom pivot-tab-group-label-padding " "
+(defcustom tabsession-tab-group-label-padding " "
   "Horizontal padding added around the visible session label."
   :type 'string)
 
-(defcustom pivot-tab-bar-auto-width nil
-  "Whether `pivot-mode' should keep `tab-bar-auto-width' enabled.
+(defcustom tabsession-tab-bar-auto-width nil
+  "Whether `tabsession-mode' should keep `tab-bar-auto-width' enabled.
 When nil, tab widths follow the displayed label width instead of being
 stretched across the entire tab bar."
   :type 'boolean)
 
-(defvar pivot--saved-tab-bar-tab-group-function nil
+(defvar tabsession--saved-tab-bar-tab-group-function nil
   "Original value of `tab-bar-tab-group-function'
-before enabling `pivot-mode'.")
+before enabling `tabsession-mode'.")
 
-(defvar pivot--saved-tab-bar-mode nil
-  "Original value of `tab-bar-mode' before enabling `pivot-mode'.")
+(defvar tabsession--saved-tab-bar-mode nil
+  "Original value of `tab-bar-mode' before enabling `tabsession-mode'.")
 
-(defvar pivot--saved-tab-bar-format nil
-  "Original value of `tab-bar-format' before enabling `pivot-mode'.")
+(defvar tabsession--saved-tab-bar-format nil
+  "Original value of `tab-bar-format' before enabling `tabsession-mode'.")
 
-(defvar pivot--saved-tab-bar-show-inactive-group-tabs nil
+(defvar tabsession--saved-tab-bar-show-inactive-group-tabs nil
   "Original value of `tab-bar-show-inactive-group-tabs' before enabling mode.")
 
-(defvar pivot--saved-tab-bar-close-button-show nil
+(defvar tabsession--saved-tab-bar-close-button-show nil
   "Original value of `tab-bar-close-button-show' before enabling mode.")
 
-(defvar pivot--saved-tab-bar-auto-width nil
+(defvar tabsession--saved-tab-bar-auto-width nil
   "Original value of `tab-bar-auto-width' before enabling mode.")
 
-(defconst pivot--selector-key-preference
+(defconst tabsession--selector-key-preference
   (string-to-list "asdfjkl;ghwertyuiopcvbnmzqx1234567890")
   "Preferred key order for quick session selection on a QWERTY layout.")
 
-(defvar pivot--inhibit-command-scoping nil
+(defvar tabsession--inhibit-command-scoping nil
   "When non-nil, bypass session-scoped tab-bar command advice.")
 
-(defconst pivot--frame-hotkeys-parameter 'pivot-session-hotkeys
+(defconst tabsession--frame-hotkeys-parameter 'tabsession-session-hotkeys
   "Frame parameter storing session hotkeys for that frame.")
 
-(defconst pivot--frame-last-session-parameter 'pivot-last-session
+(defconst tabsession--frame-last-session-parameter 'tabsession-last-session
   "Frame parameter storing the previous session for that frame.")
 
 ;;; Core helpers
 
-(defun pivot--state-frame (&optional frame)
+(defun tabsession--state-frame (&optional frame)
   "Return FRAME or the selected frame."
   (or frame (selected-frame)))
 
-(defun pivot--frame-hotkeys (&optional frame)
+(defun tabsession--frame-hotkeys (&optional frame)
   "Return session hotkeys for FRAME."
-  (frame-parameter (pivot--state-frame frame)
-                   pivot--frame-hotkeys-parameter))
+  (frame-parameter (tabsession--state-frame frame)
+                   tabsession--frame-hotkeys-parameter))
 
-(defun pivot--set-frame-hotkeys (value &optional frame)
+(defun tabsession--set-frame-hotkeys (value &optional frame)
   "Set session hotkeys for FRAME to VALUE."
-  (let ((frame (pivot--state-frame frame)))
-    (set-frame-parameter frame pivot--frame-hotkeys-parameter value)
+  (let ((frame (tabsession--state-frame frame)))
+    (set-frame-parameter frame tabsession--frame-hotkeys-parameter value)
     value))
 
-(defun pivot--frame-last-session (&optional frame)
+(defun tabsession--frame-last-session (&optional frame)
   "Return the previous session for FRAME."
-  (frame-parameter (pivot--state-frame frame)
-                   pivot--frame-last-session-parameter))
+  (frame-parameter (tabsession--state-frame frame)
+                   tabsession--frame-last-session-parameter))
 
-(defun pivot--set-frame-last-session (value &optional frame)
+(defun tabsession--set-frame-last-session (value &optional frame)
   "Set the previous session for FRAME to VALUE."
-  (let ((frame (pivot--state-frame frame)))
-    (set-frame-parameter frame pivot--frame-last-session-parameter value)
+  (let ((frame (tabsession--state-frame frame)))
+    (set-frame-parameter frame tabsession--frame-last-session-parameter value)
     value))
 
-(defun pivot--tab-group (tab)
+(defun tabsession--tab-group (tab)
   "Return the session group for TAB."
   (or (alist-get 'group tab)
-      pivot-default-session))
+      tabsession-default-session))
 
-(defun pivot--current ()
+(defun tabsession--current ()
   "Return the current session name."
-  (pivot--tab-group (tab-bar--current-tab)))
+  (tabsession--tab-group (tab-bar--current-tab)))
 
-(defun pivot--record-session-transition (from to &optional frame)
+(defun tabsession--record-session-transition (from to &optional frame)
   "Record a session transition from FROM to TO on FRAME."
   (when (and from to (not (equal from to)))
-    (pivot--set-frame-last-session from frame)))
+    (tabsession--set-frame-last-session from frame)))
 
-(defun pivot--all-tabs (&optional frame)
+(defun tabsession--all-tabs (&optional frame)
   "Return the complete tab list for FRAME."
   (tab-bar-tabs frame))
 
-(defun pivot--current-tab-in-list (tabs)
+(defun tabsession--current-tab-in-list (tabs)
   "Return the current tab object from TABS."
   (seq-find (lambda (tab)
               (eq (car tab) 'current-tab))
             tabs))
 
-(defun pivot--tabs-in-current-session (&optional frame)
+(defun tabsession--tabs-in-current-session (&optional frame)
   "Return tabs in the current session for FRAME."
-  (let* ((tabs (pivot--all-tabs frame))
-         (current-tab (pivot--current-tab-in-list tabs))
+  (let* ((tabs (tabsession--all-tabs frame))
+         (current-tab (tabsession--current-tab-in-list tabs))
          (current-group (and current-tab
-                             (pivot--tab-group current-tab))))
+                             (tabsession--tab-group current-tab))))
     (if current-group
         (seq-filter
          (lambda (tab)
-           (equal (pivot--tab-group tab) current-group))
+           (equal (tabsession--tab-group tab) current-group))
          tabs)
       tabs)))
 
-(defun pivot--call-unscoped (fn &rest args)
+(defun tabsession--call-unscoped (fn &rest args)
   "Call FN with ARGS while bypassing session-scoped advice."
-  (let ((pivot--inhibit-command-scoping t))
+  (let ((tabsession--inhibit-command-scoping t))
     (apply fn args)))
 
-(defun pivot--set (name)
+(defun tabsession--set (name)
   "Assign current tab to session NAME."
   (tab-bar-change-tab-group name))
 
-(defun pivot--tabs (&optional frame)
+(defun tabsession--tabs (&optional frame)
   "Return all tabs for FRAME."
-  (pivot--all-tabs frame))
+  (tabsession--all-tabs frame))
 
-(defun pivot--ensure-current-session ()
+(defun tabsession--ensure-current-session ()
   "Assign the current tab to the default session if it has no group."
   (unless (alist-get 'group (tab-bar--current-tab))
-    (pivot--set pivot-default-session)))
+    (tabsession--set tabsession-default-session)))
 
-(defun pivot--select-tab (tab)
+(defun tabsession--select-tab (tab)
   "Select TAB from the complete tab list."
-  (let* ((current-session (pivot--current))
-         (tabs (pivot--all-tabs))
+  (let* ((current-session (tabsession--current))
+         (tabs (tabsession--all-tabs))
          (index (seq-position tabs tab #'eq)))
     (when index
-      (pivot--record-session-transition
+      (tabsession--record-session-transition
        current-session
-       (pivot--tab-group tab))
-      (pivot--call-unscoped #'tab-bar-select-tab (1+ index)))))
+       (tabsession--tab-group tab))
+      (tabsession--call-unscoped #'tab-bar-select-tab (1+ index)))))
 
-(defun pivot--reselect-session (name)
+(defun tabsession--reselect-session (name)
   "Select a surviving tab in session NAME without recording a transition."
-  (when-let* ((tab (pivot--preferred-tab name))
-              (index (seq-position (pivot--all-tabs) tab #'eq)))
-    (pivot--call-unscoped #'tab-bar-select-tab (1+ index))))
+  (when-let* ((tab (tabsession--preferred-tab name))
+              (index (seq-position (tabsession--all-tabs) tab #'eq)))
+    (tabsession--call-unscoped #'tab-bar-select-tab (1+ index))))
 
-(defun pivot--switch-tab-in-current-session (arg)
+(defun tabsession--switch-tab-in-current-session (arg)
   "Switch ARG tabs within the current session."
-  (let* ((tabs (pivot--tabs-in-current-session))
-         (current-tab (pivot--current-tab-in-list (pivot--all-tabs)))
+  (let* ((tabs (tabsession--tabs-in-current-session))
+         (current-tab (tabsession--current-tab-in-list (tabsession--all-tabs)))
          (current-index (seq-position tabs current-tab #'eq)))
     (when (and current-index tabs)
-      (pivot--select-tab
+      (tabsession--select-tab
        (nth (mod (+ current-index arg) (length tabs))
             tabs)))))
 
-(defun pivot--move-tab-in-current-session (arg)
+(defun tabsession--move-tab-in-current-session (arg)
   "Move the current tab ARG positions within the current session."
-  (let* ((tabs (pivot--tabs-in-current-session))
-         (current-tab (pivot--current-tab-in-list (pivot--all-tabs)))
+  (let* ((tabs (tabsession--tabs-in-current-session))
+         (current-tab (tabsession--current-tab-in-list (tabsession--all-tabs)))
          (current-index (seq-position tabs current-tab #'eq)))
     (when (and current-index (> (length tabs) 1))
       (let* ((target-index (max 0 (min (+ current-index arg)
                                        (1- (length tabs)))))
              (target-tab (nth target-index tabs))
-             (target-position (seq-position (pivot--all-tabs) target-tab #'eq)))
+             (target-position (seq-position (tabsession--all-tabs) target-tab #'eq)))
         (when (and target-position (/= current-index target-index))
-          (pivot--call-unscoped #'tab-bar-move-tab-to (1+ target-position)))))))
+          (tabsession--call-unscoped #'tab-bar-move-tab-to (1+ target-position)))))))
 
-(defun pivot--advice-switch-to-next-tab (orig &optional arg)
+(defun tabsession--advice-switch-to-next-tab (orig &optional arg)
   "Restrict `tab-bar-switch-to-next-tab' ORIG to the current session."
-  (if (or pivot--inhibit-command-scoping
-          (not pivot-mode))
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
       (funcall orig arg)
-    (pivot--switch-tab-in-current-session (or arg 1))))
+    (tabsession--switch-tab-in-current-session (or arg 1))))
 
-(defun pivot--advice-switch-to-prev-tab (orig &optional arg)
+(defun tabsession--advice-switch-to-prev-tab (orig &optional arg)
   "Restrict `tab-bar-switch-to-prev-tab' ORIG to the current session."
-  (if (or pivot--inhibit-command-scoping
-          (not pivot-mode))
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
       (funcall orig arg)
-    (pivot--switch-tab-in-current-session (- (or arg 1)))))
+    (tabsession--switch-tab-in-current-session (- (or arg 1)))))
 
-(defun pivot--advice-select-tab (orig tab-number &rest args)
+(defun tabsession--advice-select-tab (orig tab-number &rest args)
   "Restrict `tab-bar-select-tab' ORIG to the current session."
-  (if (or pivot--inhibit-command-scoping
-          (not pivot-mode))
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
       (apply orig tab-number args)
     (let* ((frame (car args))
            (tab (nth (1- tab-number)
-                     (pivot--tabs-in-current-session frame))))
+                     (tabsession--tabs-in-current-session frame))))
       (unless tab
         (user-error "No such tab in current session: %s" tab-number))
-      (pivot--select-tab tab))))
+      (tabsession--select-tab tab))))
 
-(defun pivot--advice-move-tab (orig &optional arg)
+(defun tabsession--advice-move-tab (orig &optional arg)
   "Restrict `tab-bar-move-tab' ORIG to the current session."
-  (if (or pivot--inhibit-command-scoping
-          (not pivot-mode))
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
       (funcall orig arg)
-    (pivot--move-tab-in-current-session (or arg 1))))
+    (tabsession--move-tab-in-current-session (or arg 1))))
 
-(defun pivot--advice-move-tab-to (orig to-position &rest args)
+(defun tabsession--advice-move-tab-to (orig to-position &rest args)
   "Restrict `tab-bar-move-tab-to' ORIG to the current session."
-  (if (or pivot--inhibit-command-scoping
-          (not pivot-mode))
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
       (apply orig to-position args)
-    (let* ((tabs (pivot--tabs-in-current-session))
+    (let* ((tabs (tabsession--tabs-in-current-session))
            (target-index (max 0 (min (1- to-position) (1- (length tabs)))))
            (target-tab (nth target-index tabs))
-           (current-tab (pivot--current-tab-in-list (pivot--all-tabs)))
+           (current-tab (tabsession--current-tab-in-list (tabsession--all-tabs)))
            (target-position (and target-tab
-                                 (seq-position (pivot--all-tabs) target-tab #'eq))))
+                                 (seq-position (tabsession--all-tabs) target-tab #'eq))))
       (when (and target-position
                  (not (eq target-tab current-tab)))
-        (apply #'pivot--call-unscoped
+        (apply #'tabsession--call-unscoped
                #'tab-bar-move-tab-to
                (1+ target-position)
                args)))))
 
-(defun pivot--tab-bar-format (format)
-  "Return FORMAT adjusted for `pivot-mode'."
+(defun tabsession--tab-bar-format (format)
+  "Return FORMAT adjusted for `tabsession-mode'."
   (seq-remove
    (lambda (item)
      (eq item 'tab-bar-format-add-tab))
    (mapcar (lambda (item)
              (if (memq item '(tab-bar-format-tabs tab-bar-format-tabs-groups))
-                 'pivot--format-tabs
+                 'tabsession--format-tabs
                item))
            format)))
 
-(defun pivot--pad-tab (tab)
+(defun tabsession--pad-tab (tab)
   "Return TAB with padding applied to its displayed name."
   (let ((tab (copy-tree tab)))
     (when-let* ((name (alist-get 'name tab)))
       (setf (alist-get 'name tab)
-            (pivot--pad-label name pivot-tab-label-padding)))
+            (tabsession--pad-label name tabsession-tab-label-padding)))
     tab))
 
-(defun pivot--pad-label (label padding)
+(defun tabsession--pad-label (label padding)
   "Return LABEL with PADDING added to both sides."
   (concat padding label padding))
 
-(defun pivot--format-current-tab-group (tab)
-  "Format TAB's current session label with pivot padding."
+(defun tabsession--format-current-tab-group (tab)
+  "Format TAB's current session label with tabsession padding."
   (let ((items (tab-bar--format-tab-group tab 1 t)))
     (mapcar
      (lambda (item)
@@ -279,14 +279,14 @@ before enabling `pivot-mode'.")
                 (eq (car item) 'current-group))
            (let ((item (copy-sequence item)))
              (setf (nth 2 item)
-                   (pivot--pad-label
+                   (tabsession--pad-label
                     (nth 2 item)
-                    pivot-tab-group-label-padding))
+                    tabsession-tab-group-label-padding))
              item)
          item))
      items)))
 
-(defun pivot--format-tabs ()
+(defun tabsession--format-tabs ()
   "Produce tab-bar items for the current session only."
   (let* ((tabs (funcall tab-bar-tabs-function))
          (current-tab (tab-bar--current-tab-find tabs))
@@ -300,45 +300,45 @@ before enabling `pivot-mode'.")
          (i 0))
     (append
      (when (and current-tab current-group)
-       (pivot--format-current-tab-group current-tab))
+       (tabsession--format-current-tab-group current-tab))
      (mapcan
       (lambda (tab)
         (setq i (1+ i))
         (let ((tab-bar-tab-face-function tab-bar-tab-group-face-function))
-          (tab-bar--format-tab (pivot--pad-tab tab) i)))
+          (tab-bar--format-tab (tabsession--pad-tab tab) i)))
       visible-tabs))))
 
-(defun pivot--sessions ()
+(defun tabsession--sessions ()
   "Return all session names."
   (delete-dups
-   (mapcar #'pivot--tab-group
-           (pivot--all-tabs))))
+   (mapcar #'tabsession--tab-group
+           (tabsession--all-tabs))))
 
-(defun pivot--tabs-in-session (name)
+(defun tabsession--tabs-in-session (name)
   (seq-filter
    (lambda (tab)
-     (equal (pivot--tab-group tab) name))
-   (pivot--all-tabs)))
+     (equal (tabsession--tab-group tab) name))
+   (tabsession--all-tabs)))
 
-(defun pivot--preferred-tab (name)
+(defun tabsession--preferred-tab (name)
   "Return the preferred tab to select for session NAME."
   (car (seq-sort-by
         (lambda (tab)
           (or (alist-get 'time tab) 0))
         #'>
-        (pivot--tabs-in-session name))))
+        (tabsession--tabs-in-session name))))
 
-(defun pivot--fallback-session (&optional excluded-name)
+(defun tabsession--fallback-session (&optional excluded-name)
   "Return a surviving session name, excluding EXCLUDED-NAME when possible."
   (car (seq-remove (lambda (name)
                      (equal name excluded-name))
-                   (pivot--sorted-sessions))))
+                   (tabsession--sorted-sessions))))
 
-(defun pivot--sorted-sessions ()
+(defun tabsession--sorted-sessions ()
   "Return session names sorted alphabetically."
-  (sort (copy-sequence (pivot--sessions)) #'string-lessp))
+  (sort (copy-sequence (tabsession--sessions)) #'string-lessp))
 
-(defun pivot--format-menu (title entries)
+(defun tabsession--format-menu (title entries)
   "Return a formatted menu with TITLE and ENTRIES.
 
 ENTRIES should already include any text properties to render."
@@ -360,49 +360,49 @@ ENTRIES should already include any text properties to render."
      (propertize (concat title "\n") 'face 'minibuffer-prompt)
      (string-join (nreverse lines) "\n"))))
 
-(defun pivot--session-hotkey (name)
+(defun tabsession--session-hotkey (name)
   "Return the hotkey assigned to session NAME, or nil."
-  (car (rassoc name (pivot--frame-hotkeys))))
+  (car (rassoc name (tabsession--frame-hotkeys))))
 
-(defun pivot--hotkey-session (key)
+(defun tabsession--hotkey-session (key)
   "Return the session assigned to hotkey KEY, or nil."
-  (alist-get key (pivot--frame-hotkeys)))
+  (alist-get key (tabsession--frame-hotkeys)))
 
-(defun pivot--clear-session-hotkey (name)
+(defun tabsession--clear-session-hotkey (name)
   "Remove any hotkey bound to session NAME."
-  (pivot--set-frame-hotkeys
-   (cl-remove name (pivot--frame-hotkeys)
+  (tabsession--set-frame-hotkeys
+   (cl-remove name (tabsession--frame-hotkeys)
               :key #'cdr
               :test #'equal)))
 
-(defun pivot--assign-hotkey (key name)
+(defun tabsession--assign-hotkey (key name)
   "Assign hotkey KEY to session NAME."
-  (let ((existing (pivot--hotkey-session key)))
+  (let ((existing (tabsession--hotkey-session key)))
     (when (and existing
                (not (equal existing name)))
       (user-error "Hotkey [%s] is already assigned to %s"
                   (single-key-description key)
                   existing)))
-  (pivot--clear-session-hotkey name)
-  (let ((hotkeys (copy-tree (pivot--frame-hotkeys))))
+  (tabsession--clear-session-hotkey name)
+  (let ((hotkeys (copy-tree (tabsession--frame-hotkeys))))
     (setf (alist-get key hotkeys) name)
-    (pivot--set-frame-hotkeys hotkeys))
+    (tabsession--set-frame-hotkeys hotkeys))
   key)
 
-(defun pivot--rename-hotkey-session (old-name new-name)
+(defun tabsession--rename-hotkey-session (old-name new-name)
   "Update hotkey bindings from OLD-NAME to NEW-NAME."
-  (let ((key (pivot--session-hotkey old-name)))
+  (let ((key (tabsession--session-hotkey old-name)))
     (when key
-      (let ((hotkeys (copy-tree (pivot--frame-hotkeys))))
+      (let ((hotkeys (copy-tree (tabsession--frame-hotkeys))))
         (setf (alist-get key hotkeys) new-name)
-        (pivot--set-frame-hotkeys hotkeys)))))
+        (tabsession--set-frame-hotkeys hotkeys)))))
 
-(defun pivot--rename-last-session (old-name new-name)
+(defun tabsession--rename-last-session (old-name new-name)
   "Update last-session tracking from OLD-NAME to NEW-NAME."
-  (when (equal (pivot--frame-last-session) old-name)
-    (pivot--set-frame-last-session new-name)))
+  (when (equal (tabsession--frame-last-session) old-name)
+    (tabsession--set-frame-last-session new-name)))
 
-(defun pivot--hotkey-candidates ()
+(defun tabsession--hotkey-candidates ()
   "Return bound hotkey candidates sorted alphabetically by key label.
 
 Each item has the form (KEY SESSION LABEL)."
@@ -414,102 +414,102 @@ Each item has the form (KEY SESSION LABEL)."
              session
              (concat
               (propertize (format "[%s]" (single-key-description key))
-                          'face 'pivot-quick-select-key)
+                          'face 'tabsession-quick-select-key)
               " "
               (propertize session
-                          'face 'pivot-quick-select-session)))))
-   (sort (copy-sequence (pivot--frame-hotkeys))
+                          'face 'tabsession-quick-select-session)))))
+   (sort (copy-sequence (tabsession--frame-hotkeys))
          (lambda (left right)
            (string-lessp (single-key-description (car left))
                          (single-key-description (car right)))))))
 
-(defun pivot--bound-hotkey-candidates ()
+(defun tabsession--bound-hotkey-candidates ()
   "Return bound hotkey candidates."
-  (pivot--hotkey-candidates))
+  (tabsession--hotkey-candidates))
 
-(defun pivot--hotkey-prompt (title)
+(defun tabsession--hotkey-prompt (title)
   "Return a prompt with TITLE for selecting a session hotkey."
-  (let ((entries (mapcar #'cl-third (pivot--hotkey-candidates))))
+  (let ((entries (mapcar #'cl-third (tabsession--hotkey-candidates))))
     (if entries
-        (pivot--format-menu title entries)
+        (tabsession--format-menu title entries)
       (concat
        (propertize (concat title "\n") 'face 'minibuffer-prompt)
        "No hotkeys assigned"))))
 
-(defun pivot--bound-hotkey-prompt (title)
+(defun tabsession--bound-hotkey-prompt (title)
   "Return a prompt with TITLE for selecting a bound hotkey."
-  (pivot--format-menu
+  (tabsession--format-menu
    title
-   (mapcar #'cl-third (pivot--bound-hotkey-candidates))))
+   (mapcar #'cl-third (tabsession--bound-hotkey-candidates))))
 
-(defun pivot-read-hotkey (&optional title)
+(defun tabsession-read-hotkey (&optional title)
   "Prompt for a hotkey using `read-key' with TITLE."
-  (read-key (pivot--hotkey-prompt (or title "Select hotkey"))))
+  (read-key (tabsession--hotkey-prompt (or title "Select hotkey"))))
 
-(defun pivot-read-bound-hotkey (&optional title)
+(defun tabsession-read-bound-hotkey (&optional title)
   "Prompt for a bound hotkey using `read-key' with TITLE."
-  (let ((candidates (pivot--bound-hotkey-candidates)))
+  (let ((candidates (tabsession--bound-hotkey-candidates)))
     (unless candidates
       (user-error "No session hotkeys are assigned"))
-    (read-key (pivot--bound-hotkey-prompt
+    (read-key (tabsession--bound-hotkey-prompt
                (or title "Jump to session:")))))
 
-(defun pivot--read-available-hotkey (name)
+(defun tabsession--read-available-hotkey (name)
   "Prompt until an available hotkey is chosen for NAME."
-  (let ((key (pivot-read-hotkey
+  (let ((key (tabsession-read-hotkey
               (format "Assign hotkey to %s" name))))
-    (if-let* ((existing (pivot--hotkey-session key)))
+    (if-let* ((existing (tabsession--hotkey-session key)))
         (if (equal existing name)
             key
           (message "Hotkey [%s] is already assigned to %s. Choose another."
                    (single-key-description key)
                    existing)
           (sit-for 1)
-          (pivot--read-available-hotkey name))
+          (tabsession--read-available-hotkey name))
       key)))
 
-(defun pivot--rename-session-tabs (old-name new-name)
+(defun tabsession--rename-session-tabs (old-name new-name)
   "Rename OLD-NAME session tabs to NEW-NAME."
   (let ((current-tab (tab-bar--current-tab)))
-    (dolist (tab (pivot--tabs-in-session old-name))
-      (pivot--select-tab tab)
+    (dolist (tab (tabsession--tabs-in-session old-name))
+      (tabsession--select-tab tab)
       (tab-bar-change-tab-group new-name))
-    (pivot--select-tab current-tab)))
+    (tabsession--select-tab current-tab)))
 
-(defun pivot--session-selector-candidates ()
+(defun tabsession--session-selector-candidates ()
   "Return session candidates with single-key selectors.
 
 Each item has the form (KEY NAME LABEL). KEY is the character
 accepted by `read-key', NAME is the session name, and LABEL is the
 string shown in the prompt."
-  (let ((sessions (pivot--sorted-sessions))
+  (let ((sessions (tabsession--sorted-sessions))
         candidates)
-    (when (> (length sessions) (length pivot--selector-key-preference))
+    (when (> (length sessions) (length tabsession--selector-key-preference))
       (user-error "Too many sessions for single-key selection"))
     (cl-loop
      for name in sessions
-     for key in pivot--selector-key-preference
+     for key in tabsession--selector-key-preference
      do (push (list key
                     name
                     (concat
                      (propertize (format "[%c]" key)
-                                 'face 'pivot-quick-select-key)
+                                 'face 'tabsession-quick-select-key)
                      " "
                      (propertize name
-                                 'face 'pivot-quick-select-session)))
+                                 'face 'tabsession-quick-select-session)))
               candidates))
     (nreverse candidates)))
 
-(defun pivot--quick-select-prompt ()
+(defun tabsession--quick-select-prompt ()
   "Return a formatted prompt for quick session selection."
-  (pivot--format-menu
+  (tabsession--format-menu
    "Select session:"
-   (mapcar #'cl-third (pivot--session-selector-candidates))))
+   (mapcar #'cl-third (tabsession--session-selector-candidates))))
 
-(defun pivot--quick-select-session ()
+(defun tabsession--quick-select-session ()
   "Prompt for a session using a single key press."
-  (let* ((candidates (pivot--session-selector-candidates))
-         (prompt (pivot--quick-select-prompt))
+  (let* ((candidates (tabsession--session-selector-candidates))
+         (prompt (tabsession--quick-select-prompt))
          (key (read-key prompt))
          (selection (seq-find (lambda (candidate)
                                 (= (car candidate) key))
@@ -518,299 +518,299 @@ string shown in the prompt."
       (user-error "No session is bound to %s" (single-key-description key)))
     (cadr selection)))
 
-(defun pivot--handle-tab-open (tab)
+(defun tabsession--handle-tab-open (tab)
   "Initialize TAB after opening."
   (unless (alist-get 'group tab)
-    (setf (alist-get 'group tab) pivot-default-session)))
+    (setf (alist-get 'group tab) tabsession-default-session)))
 
-(defun pivot--cleanup-removed-sessions (before-sessions)
+(defun tabsession--cleanup-removed-sessions (before-sessions)
   "Clear state for sessions in BEFORE-SESSIONS that no longer exist."
   (dolist (name before-sessions)
-    (unless (member name (pivot--sessions))
-      (pivot--clear-session-hotkey name)
-      (when (equal (pivot--frame-last-session) name)
-        (pivot--set-frame-last-session nil)))))
+    (unless (member name (tabsession--sessions))
+      (tabsession--clear-session-hotkey name)
+      (when (equal (tabsession--frame-last-session) name)
+        (tabsession--set-frame-last-session nil)))))
 
-(defun pivot--advice-close-tab (orig &rest args)
+(defun tabsession--advice-close-tab (orig &rest args)
   "Keep session state consistent around `tab-bar-close-tab' ORIG with ARGS."
-  (if (or pivot--inhibit-command-scoping
-          (not pivot-mode))
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
       (apply orig args)
-    (let* ((before-sessions (pivot--sessions))
-           (current-session (pivot--current))
-           (last-tab-in-session-p (= (length (pivot--tabs-in-current-session)) 1))
+    (let* ((before-sessions (tabsession--sessions))
+           (current-session (tabsession--current))
+           (last-tab-in-session-p (= (length (tabsession--tabs-in-current-session)) 1))
            (fallback-session (and last-tab-in-session-p
-                                  (pivot--fallback-session current-session))))
+                                  (tabsession--fallback-session current-session))))
       (prog1
           ;; `tab-bar-close-tab' may re-select a surviving tab by its global
           ;; tab-bar index while tearing down the closed tab. Bypass
           ;; session-scoped advice for that internal selection.
-          (apply #'pivot--call-unscoped orig args)
-        (pivot--cleanup-removed-sessions before-sessions)
+          (apply #'tabsession--call-unscoped orig args)
+        (tabsession--cleanup-removed-sessions before-sessions)
         (cond
-         ((member current-session (pivot--sessions))
-          (unless (equal current-session (pivot--current))
-            (pivot--reselect-session current-session)))
+         ((member current-session (tabsession--sessions))
+          (unless (equal current-session (tabsession--current))
+            (tabsession--reselect-session current-session)))
          ((and fallback-session
-               (member fallback-session (pivot--sessions)))
-          (pivot-switch fallback-session)))))))
+               (member fallback-session (tabsession--sessions)))
+          (tabsession-switch fallback-session)))))))
 
-(defun pivot--advice-close-other-tabs (orig &optional tab-number)
+(defun tabsession--advice-close-other-tabs (orig &optional tab-number)
   "Restrict `tab-bar-close-other-tabs' ORIG to the current session."
-  (if (or pivot--inhibit-command-scoping
-          (not pivot-mode))
+  (if (or tabsession--inhibit-command-scoping
+          (not tabsession-mode))
       (funcall orig tab-number)
-    (let* ((tabs (pivot--tabs-in-current-session))
+    (let* ((tabs (tabsession--tabs-in-current-session))
            (target-tab (if tab-number
                            (nth (1- tab-number) tabs)
-                         (pivot--current-tab-in-list (pivot--all-tabs)))))
+                         (tabsession--current-tab-in-list (tabsession--all-tabs)))))
       (unless target-tab
         (user-error "No such tab in current session: %s" tab-number))
-      (pivot--select-tab target-tab)
+      (tabsession--select-tab target-tab)
       (dolist (tab (delq target-tab (copy-sequence tabs)))
-        (when-let* ((position (seq-position (pivot--all-tabs) tab #'eq)))
-          (pivot--call-unscoped #'tab-bar-close-tab (1+ position)))))))
+        (when-let* ((position (seq-position (tabsession--all-tabs) tab #'eq)))
+          (tabsession--call-unscoped #'tab-bar-close-tab (1+ position)))))))
 
 ;;; Sparse keymap (unbound, ready for future use)
 
-(defvar pivot-keymap
+(defvar tabsession-keymap
   (let ((map (make-sparse-keymap)))
     ;; Example commands, ready to bind later if desired
-    (define-key map (kbd "s") #'pivot-switch)
-    (define-key map (kbd "S") #'pivot-switch-completing)
-    (define-key map (kbd "l") #'pivot-switch-last)
-    (define-key map (kbd "a") #'pivot-assign-hotkey)
-    (define-key map (kbd "r") #'pivot-rename)
-    (define-key map (kbd "j") #'pivot-jump-hotkey)
-    (define-key map (kbd "n") #'pivot-new)
-    (define-key map (kbd "k") #'pivot-kill)
+    (define-key map (kbd "s") #'tabsession-switch)
+    (define-key map (kbd "S") #'tabsession-switch-completing)
+    (define-key map (kbd "l") #'tabsession-switch-last)
+    (define-key map (kbd "a") #'tabsession-assign-hotkey)
+    (define-key map (kbd "r") #'tabsession-rename)
+    (define-key map (kbd "j") #'tabsession-jump-hotkey)
+    (define-key map (kbd "n") #'tabsession-new)
+    (define-key map (kbd "k") #'tabsession-kill)
     map)
-  "Sparse keymap for `pivot-mode` commands.
+  "Sparse keymap for `tabsession-mode` commands.
 Currently not bound to any prefix, ready for future keybindings.")
 
 ;;; Completing read candidates
 
-(defun pivot--session-annotation (candidate)
+(defun tabsession--session-annotation (candidate)
   "Return completion annotation for session CANDIDATE."
-  (if-let* ((key (pivot--session-hotkey candidate)))
+  (if-let* ((key (tabsession--session-hotkey candidate)))
       (format " [%s]" (single-key-description key))
     ""))
 
-(defun pivot-read (&optional prompt)
+(defun tabsession-read (&optional prompt)
   "Prompt for a session using `completing-read` with PROMPT."
   (let ((completion-extra-properties
-         '(:category pivot-session
-           :annotation-function pivot--session-annotation)))
+         '(:category tabsession-session
+           :annotation-function tabsession--session-annotation)))
     (completing-read (or prompt "Session: ")
-                     (pivot--sessions)
+                     (tabsession--sessions)
                      nil t)))
 
 (with-eval-after-load 'marginalia
-  (defun marginalia-annotate-pivot-session (candidate)
-    "Annotate pivot CANDIDATE with its assigned hotkey."
-    (pivot--session-annotation candidate))
+  (defun marginalia-annotate-tabsession-session (candidate)
+    "Annotate tabsession CANDIDATE with its assigned hotkey."
+    (tabsession--session-annotation candidate))
   (add-to-list 'marginalia-annotators
-               '(pivot-session
-                 marginalia-annotate-pivot-session
+               '(tabsession-session
+                 marginalia-annotate-tabsession-session
                  builtin
                  none)))
 
-(defun pivot--read-switch-session ()
-  "Read a session name for `pivot-switch'."
-  (let ((sessions (pivot--sessions)))
+(defun tabsession--read-switch-session ()
+  "Read a session name for `tabsession-switch'."
+  (let ((sessions (tabsession--sessions)))
     (cond
      ((null sessions)
       (user-error "No sessions available"))
      ((= (length sessions) 1)
       (car sessions))
      (t
-      (pivot--quick-select-session)))))
+      (tabsession--quick-select-session)))))
 
 ;;; Commands
 
-(defun pivot-switch-by-name (name)
+(defun tabsession-switch-by-name (name)
   "Switch to session NAME.
 
 This is the public entry point for switching sessions directly by
 name."
-  (interactive (list (pivot-read)))
-  (unless (member name (pivot--sessions))
+  (interactive (list (tabsession-read)))
+  (unless (member name (tabsession--sessions))
     (user-error "No such session: %s" name))
-  (unless (equal name (pivot--current))
-    (let ((tab (pivot--preferred-tab name)))
+  (unless (equal name (tabsession--current))
+    (let ((tab (tabsession--preferred-tab name)))
       (when tab
-        (pivot--select-tab tab)))))
+        (tabsession--select-tab tab)))))
 
-(defun pivot-switch (name)
+(defun tabsession-switch (name)
   "Switch to session NAME."
-  (interactive (list (pivot--read-switch-session)))
-  (pivot-switch-by-name name))
+  (interactive (list (tabsession--read-switch-session)))
+  (tabsession-switch-by-name name))
 
-(defun pivot-switch-completing (name)
+(defun tabsession-switch-completing (name)
   "Switch to session NAME using minibuffer completion."
-  (interactive (list (pivot-read)))
-  (pivot-switch name))
+  (interactive (list (tabsession-read)))
+  (tabsession-switch name))
 
-(defun pivot-switch-last ()
+(defun tabsession-switch-last ()
   "Switch to the previously active session."
   (interactive)
-  (let ((last-session (pivot--frame-last-session)))
+  (let ((last-session (tabsession--frame-last-session)))
     (unless last-session
       (user-error "No previous session"))
-    (unless (member last-session (pivot--sessions))
+    (unless (member last-session (tabsession--sessions))
       (user-error "Previous session no longer exists"))
-    (pivot-switch last-session)))
+    (tabsession-switch last-session)))
 
-(defun pivot-assign-hotkey (name key)
+(defun tabsession-assign-hotkey (name key)
   "Assign hotkey KEY to session NAME."
   (interactive
-   (let ((name (pivot-read)))
+   (let ((name (tabsession-read)))
      (list name
-           (pivot--read-available-hotkey name))))
-  (setq key (pivot--assign-hotkey key name))
+           (tabsession--read-available-hotkey name))))
+  (setq key (tabsession--assign-hotkey key name))
   (message "Bound session %s to [%s]" name (single-key-description key)))
 
-(defun pivot-jump-hotkey (key)
+(defun tabsession-jump-hotkey (key)
   "Jump to the session bound to hotkey KEY."
-  (interactive (list (pivot-read-bound-hotkey "Jump to session:")))
-  (if-let* ((session (pivot--hotkey-session key)))
-      (pivot-switch session)
+  (interactive (list (tabsession-read-bound-hotkey "Jump to session:")))
+  (if-let* ((session (tabsession--hotkey-session key)))
+      (tabsession-switch session)
     (message "No session is bound to [%s]" (single-key-description key))))
 
-(defun pivot-new (name)
+(defun tabsession-new (name)
   "Create new session NAME."
   (interactive (list (read-string "New session: ")))
   (tab-bar-new-tab)
-  (pivot--set name))
+  (tabsession--set name))
 
-(defun pivot-rename (old-name new-name)
+(defun tabsession-rename (old-name new-name)
   "Rename session OLD-NAME to NEW-NAME."
   (interactive
-   (let ((old-name (pivot-read)))
+   (let ((old-name (tabsession-read)))
      (list old-name
            (read-string (format "Rename session %s to: " old-name)
                         old-name))))
   (when (string-empty-p new-name)
     (user-error "Session name cannot be empty"))
-  (unless (member old-name (pivot--sessions))
+  (unless (member old-name (tabsession--sessions))
     (user-error "No such session: %s" old-name))
   (unless (or (equal old-name new-name)
-              (not (member new-name (pivot--sessions))))
+              (not (member new-name (tabsession--sessions))))
     (user-error "Session already exists: %s" new-name))
   (unless (equal old-name new-name)
-    (pivot--rename-session-tabs old-name new-name)
-    (pivot--rename-hotkey-session old-name new-name)
-    (pivot--rename-last-session old-name new-name)))
+    (tabsession--rename-session-tabs old-name new-name)
+    (tabsession--rename-hotkey-session old-name new-name)
+    (tabsession--rename-last-session old-name new-name)))
 
-(defun pivot-kill (name)
+(defun tabsession-kill (name)
   "Kill session NAME."
-  (interactive (list (pivot-read)))
-  (when (= (length (pivot--sessions)) 1)
+  (interactive (list (tabsession-read)))
+  (when (= (length (tabsession--sessions)) 1)
     (user-error "Cannot kill the last session"))
-  (pivot--clear-session-hotkey name)
-  (when (equal (pivot--frame-last-session) name)
-    (pivot--set-frame-last-session nil))
-  (dolist (tab (pivot--tabs-in-session name))
-    (tab-bar-close-tab (1+ (seq-position (pivot--all-tabs) tab #'eq)))))
+  (tabsession--clear-session-hotkey name)
+  (when (equal (tabsession--frame-last-session) name)
+    (tabsession--set-frame-last-session nil))
+  (dolist (tab (tabsession--tabs-in-session name))
+    (tab-bar-close-tab (1+ (seq-position (tabsession--all-tabs) tab #'eq)))))
 
 ;;; Minor mode
 
-(define-minor-mode pivot-mode
+(define-minor-mode tabsession-mode
   "Manage sessions using tab-bar groups, with mode line display."
   :global t
-  ;; :keymap pivot-keymap
-  (if pivot-mode
+  ;; :keymap tabsession-keymap
+  (if tabsession-mode
       (progn
-        (setq pivot--saved-tab-bar-mode tab-bar-mode)
+        (setq tabsession--saved-tab-bar-mode tab-bar-mode)
         (tab-bar-mode 1)
-        (setq pivot--saved-tab-bar-tab-group-function tab-bar-tab-group-function)
-        (setq pivot--saved-tab-bar-format tab-bar-format)
-        (setq pivot--saved-tab-bar-show-inactive-group-tabs
+        (setq tabsession--saved-tab-bar-tab-group-function tab-bar-tab-group-function)
+        (setq tabsession--saved-tab-bar-format tab-bar-format)
+        (setq tabsession--saved-tab-bar-show-inactive-group-tabs
               tab-bar-show-inactive-group-tabs)
-        (setq pivot--saved-tab-bar-close-button-show
+        (setq tabsession--saved-tab-bar-close-button-show
               tab-bar-close-button-show)
-        (setq pivot--saved-tab-bar-auto-width
+        (setq tabsession--saved-tab-bar-auto-width
               tab-bar-auto-width)
-        (setq tab-bar-tab-group-function #'pivot--tab-group)
+        (setq tab-bar-tab-group-function #'tabsession--tab-group)
         (setq tab-bar-format
-              (pivot--tab-bar-format tab-bar-format))
+              (tabsession--tab-bar-format tab-bar-format))
         (setq tab-bar-show-inactive-group-tabs nil)
         (setq tab-bar-close-button-show nil)
-        (setq tab-bar-auto-width pivot-tab-bar-auto-width)
+        (setq tab-bar-auto-width tabsession-tab-bar-auto-width)
         (advice-add 'tab-next :around
-                    #'pivot--advice-switch-to-next-tab)
+                    #'tabsession--advice-switch-to-next-tab)
         (advice-add 'tab-bar-switch-to-next-tab :around
-                    #'pivot--advice-switch-to-next-tab)
+                    #'tabsession--advice-switch-to-next-tab)
         (advice-add 'tab-previous :around
-                    #'pivot--advice-switch-to-prev-tab)
+                    #'tabsession--advice-switch-to-prev-tab)
         (advice-add 'tab-bar-switch-to-prev-tab :around
-                    #'pivot--advice-switch-to-prev-tab)
+                    #'tabsession--advice-switch-to-prev-tab)
         (advice-add 'tab-bar-select-tab :around
-                    #'pivot--advice-select-tab)
+                    #'tabsession--advice-select-tab)
         (advice-add 'tab-bar-close-tab :around
-                    #'pivot--advice-close-tab)
+                    #'tabsession--advice-close-tab)
         (advice-add 'tab-bar-close-other-tabs :around
-                    #'pivot--advice-close-other-tabs)
+                    #'tabsession--advice-close-other-tabs)
         (advice-add 'tab-move :around
-                    #'pivot--advice-move-tab)
+                    #'tabsession--advice-move-tab)
         (advice-add 'tab-bar-move-tab :around
-                    #'pivot--advice-move-tab)
+                    #'tabsession--advice-move-tab)
         (advice-add 'tab-bar-move-tab-to :around
-                    #'pivot--advice-move-tab-to)
+                    #'tabsession--advice-move-tab-to)
         (add-hook 'tab-bar-tab-post-open-functions
-                  #'pivot--handle-tab-open)
+                  #'tabsession--handle-tab-open)
         ;; Ensure startup tab has a session
-        (pivot--set-frame-hotkeys nil)
-        (pivot--set-frame-last-session nil)
-        (pivot--ensure-current-session))
+        (tabsession--set-frame-hotkeys nil)
+        (tabsession--set-frame-last-session nil)
+        (tabsession--ensure-current-session))
     ;; Disable
     (advice-remove 'tab-next
-                   #'pivot--advice-switch-to-next-tab)
+                   #'tabsession--advice-switch-to-next-tab)
     (advice-remove 'tab-bar-switch-to-next-tab
-                   #'pivot--advice-switch-to-next-tab)
+                   #'tabsession--advice-switch-to-next-tab)
     (advice-remove 'tab-previous
-                   #'pivot--advice-switch-to-prev-tab)
+                   #'tabsession--advice-switch-to-prev-tab)
     (advice-remove 'tab-bar-switch-to-prev-tab
-                   #'pivot--advice-switch-to-prev-tab)
+                   #'tabsession--advice-switch-to-prev-tab)
     (advice-remove 'tab-bar-select-tab
-                   #'pivot--advice-select-tab)
+                   #'tabsession--advice-select-tab)
     (advice-remove 'tab-bar-close-tab
-                   #'pivot--advice-close-tab)
+                   #'tabsession--advice-close-tab)
     (advice-remove 'tab-bar-close-other-tabs
-                   #'pivot--advice-close-other-tabs)
+                   #'tabsession--advice-close-other-tabs)
     (advice-remove 'tab-move
-                   #'pivot--advice-move-tab)
+                   #'tabsession--advice-move-tab)
     (advice-remove 'tab-bar-move-tab
-                   #'pivot--advice-move-tab)
+                   #'tabsession--advice-move-tab)
     (advice-remove 'tab-bar-move-tab-to
-                   #'pivot--advice-move-tab-to)
+                   #'tabsession--advice-move-tab-to)
     (remove-hook 'tab-bar-tab-post-open-functions
-                 #'pivot--handle-tab-open)
-    (setq tab-bar-tab-group-function pivot--saved-tab-bar-tab-group-function)
-    (setq tab-bar-format pivot--saved-tab-bar-format)
+                 #'tabsession--handle-tab-open)
+    (setq tab-bar-tab-group-function tabsession--saved-tab-bar-tab-group-function)
+    (setq tab-bar-format tabsession--saved-tab-bar-format)
     (setq tab-bar-show-inactive-group-tabs
-          pivot--saved-tab-bar-show-inactive-group-tabs)
+          tabsession--saved-tab-bar-show-inactive-group-tabs)
     (setq tab-bar-close-button-show
-          pivot--saved-tab-bar-close-button-show)
+          tabsession--saved-tab-bar-close-button-show)
     (setq tab-bar-auto-width
-          pivot--saved-tab-bar-auto-width)
-    (when (null pivot--saved-tab-bar-mode)
+          tabsession--saved-tab-bar-auto-width)
+    (when (null tabsession--saved-tab-bar-mode)
       (tab-bar-mode 0))
-    (setq pivot--saved-tab-bar-mode nil)
-    (setq pivot--saved-tab-bar-tab-group-function nil)
-    (setq pivot--saved-tab-bar-format nil)
-    (setq pivot--saved-tab-bar-show-inactive-group-tabs nil)
-    (setq pivot--saved-tab-bar-close-button-show nil)
-    (setq pivot--saved-tab-bar-auto-width nil)
-    (pivot--set-frame-hotkeys nil)
-    (pivot--set-frame-last-session nil)))
+    (setq tabsession--saved-tab-bar-mode nil)
+    (setq tabsession--saved-tab-bar-tab-group-function nil)
+    (setq tabsession--saved-tab-bar-format nil)
+    (setq tabsession--saved-tab-bar-show-inactive-group-tabs nil)
+    (setq tabsession--saved-tab-bar-close-button-show nil)
+    (setq tabsession--saved-tab-bar-auto-width nil)
+    (tabsession--set-frame-hotkeys nil)
+    (tabsession--set-frame-last-session nil)))
 
 ;;; Startup safety
 
 (add-hook 'emacs-startup-hook
           (lambda ()
-            (when pivot-mode
-              (pivot--ensure-current-session))))
+            (when tabsession-mode
+              (tabsession--ensure-current-session))))
 
-(provide 'pivot)
-;;; pivot.el ends here
+(provide 'tabsession)
+;;; tabsession.el ends here
